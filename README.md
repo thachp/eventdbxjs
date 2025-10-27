@@ -1,6 +1,6 @@
-# EventDBX Node Client (`eventdbx`)
+# EventDBX Node Client (`eventdbxjs`)
 
-`eventdbx` is a native addon (via [`napi-rs`](https://napi.rs/)) that gives the Node.js ecosystem first-class access to the EventDBX control socket. It wraps the Cap’n Proto control protocol exposed on port `6363`, delivering simple, Promise-based helpers for aggregate workflows.
+`eventdbxjs` is a native addon (via [`napi-rs`](https://napi.rs/)) that gives the Node.js ecosystem first-class access to the EventDBX control socket. It wraps the Cap’n Proto control protocol exposed on port `6363`, delivering simple, Promise-based helpers for aggregate workflows.
 
 > Status: experimental — the binding is still evolving alongside the EventDBX control protocol. Expect minor breaking changes until the API stabilises.
 
@@ -51,7 +51,7 @@ The shared library is written to `target/{debug,release}` as `libeventdbx.*`. Re
 ## Quick Start
 
 ```js
-import { createClient } from "eventdbx";
+import { createClient } from "eventdbxjs";
 
 async function main() {
   const client = createClient({
@@ -222,8 +222,7 @@ All methods return Promises and throw regular JavaScript `Error` instances on fa
 - Integration tests are still TODO — start them under `__test__/` or add Rust integration tests in `tests/`.
 
 ## Roadmap
-
-- Add `package.json` metadata and prebuild scripts for automated npm releases.
-- Regenerate the published TypeScript definitions from the napi-rs metadata.
-- Surface strongly typed helpers for common aggregate payloads.
-- Support streaming subscriptions once EventDBX exposes them on the control socket.
+- [x] Add `package.json` metadata and prebuild scripts for automated npm releases.  
+- [x] Regenerate the published TypeScript definitions from the napi-rs metadata.  
+- [x] Surface strongly typed helpers for common aggregate payloads.  
+- [ ] Support streaming subscriptions once EventDBX exposes them on the control socket.  
