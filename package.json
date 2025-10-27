@@ -1,22 +1,22 @@
 {
-  "name": "@napi-rs/package-template-pnpm",
+  "name": "eventdbxjs",
   "version": "1.1.1",
-  "description": "Template project for writing node package with napi-rs",
+  "description": "EventDBX client for Node.js",
   "main": "index.js",
   "types": "index.d.ts",
   "browser": "browser.js",
   "repository": {
-    "url": "git+ssh://git@github.com/napi-rs/package-template-pnpm.git",
+    "url": "git+ssh://git@github.com:thachp/eventdbxjs.git",
     "type": "git"
   },
   "license": "MIT",
   "keywords": [
-    "napi-rs",
-    "NAPI",
-    "N-API",
-    "Rust",
-    "node-addon",
-    "node-addon-api"
+    "eventdbx",
+    "eventstore",
+    "event-sourcing",
+    "event-driven",
+    "database",
+    "client"
   ],
   "files": [
     "index.d.ts",
@@ -24,7 +24,7 @@
     "browser.js"
   ],
   "napi": {
-    "binaryName": "package-template",
+    "binaryName": "eventdbx",
     "targets": [
       "x86_64-apple-darwin",
       "aarch64-apple-darwin",

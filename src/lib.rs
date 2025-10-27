@@ -1,8 +1,450 @@
-#![deny(clippy::all)]
+//! Node.js bindings for the EventDBX control socket.
+//!
+//! This addon wraps the async `ControlClient` exposed from the bundled plugin API
+//! and translates the JSON payloads into JavaScript objects. Consumers can
+//! list aggregates, fetch a single aggregate, enumerate events, append a new
+//! event, or apply a JSON Patch against the current state.
 
+use std::sync::Arc;
+
+pub mod plugin_api;
+
+use crate::plugin_api::{
+  AggregateStateView, AppendEventRequest, ControlClient, ControlClientError, PatchEventRequest,
+  StoredEventRecord,
+};
+use napi::bindgen_prelude::*;
 use napi_derive::napi;
+use serde_json::{json, Map as JsonMap, Value as JsonValue};
+use tokio::sync::Mutex;
+
+#[derive(Clone, Debug)]
+struct ClientConfig {
+  ip: String,
+  port: u16,
+  token: Option<String>,
+}
+
+impl Default for ClientConfig {
+  fn default() -> Self {
+    Self {
+      ip: std::env::var("EVENTDBX_HOST").unwrap_or_else(|_| "127.0.0.1".to_string()),
+      port: std::env::var("EVENTDBX_PORT")
+        .ok()
+        .and_then(|value| value.parse::<u16>().ok())
+        .unwrap_or(6363),
+      token: std::env::var("EVENTDBX_TOKEN")
+        .ok()
+        .filter(|value| !value.is_empty()),
+    }
+  }
+}
+
+impl ClientConfig {
+  fn endpoint(&self) -> String {
+    format!("{}:{}", self.ip, self.port)
+  }
+}
+
+#[derive(Default)]
+struct ClientState {
+  client: Option<ControlClient>,
+}
+
+#[napi(object)]
+pub struct ClientOptions {
+  pub ip: Option<String>,
+  pub port: Option<u16>,
+  pub token: Option<String>,
+}
+
+impl From<ClientOptions> for ClientConfig {
+  fn from(options: ClientOptions) -> Self {
+    let mut config = ClientConfig::default();
+    if let Some(ip) = options.ip {
+      config.ip = ip;
+    }
+    if let Some(port) = options.port {
+      config.port = port;
+    }
+    if let Some(token) = options.token {
+      config.token = Some(token);
+    }
+    config
+  }
+}
+
+#[napi(object)]
+pub struct PageOptions {
+  pub take: Option<u32>,
+  pub skip: Option<u32>,
+}
+
+#[napi(object)]
+pub struct AppendOptions {
+  pub payload: Option<serde_json::Value>,
+  pub metadata: Option<serde_json::Value>,
+  pub note: Option<String>,
+  pub token: Option<String>,
+}
+
+#[napi(object)]
+pub struct PatchOptions {
+  pub metadata: Option<serde_json::Value>,
+  pub note: Option<String>,
+  pub token: Option<String>,
+}
 
 #[napi]
-pub fn plus_100(input: u32) -> u32 {
-  input + 100
+pub struct DbxClient {
+  config: ClientConfig,
+  state: Arc<Mutex<ClientState>>,
+}
+
+#[napi]
+impl DbxClient {
+  #[napi(constructor)]
+  pub fn new(options: Option<ClientOptions>) -> Self {
+    let config = options.map(Into::into).unwrap_or_default();
+    Self {
+      config,
+      state: Arc::new(Mutex::new(ClientState::default())),
+    }
+  }
+
+  /// Establish a TCP connection to the EventDBX control socket.
+  #[napi]
+  pub async fn connect(&self) -> napi::Result<()> {
+    let mut guard = self.state.lock().await;
+    if guard.client.is_some() {
+      return Ok(());
+    }
+
+    let addr = self.config.endpoint();
+    let client = ControlClient::connect(&addr)
+      .await
+      .map_err(control_err_to_napi)?;
+    guard.client = Some(client);
+    Ok(())
+  }
+
+  /// Close the underlying socket, if connected.
+  #[napi]
+  pub async fn disconnect(&self) -> napi::Result<()> {
+    let mut guard = self.state.lock().await;
+    guard.client.take();
+    Ok(())
+  }
+
+  /// Returns `true` if a socket connection is currently held.
+  #[napi]
+  pub async fn is_connected(&self) -> napi::Result<bool> {
+    let guard = self.state.lock().await;
+    Ok(guard.client.is_some())
+  }
+
+  /// Returns the configured endpoint (host/port).
+  #[napi(getter)]
+  pub fn endpoint(&self) -> ClientEndpoint {
+    ClientEndpoint {
+      ip: self.config.ip.clone(),
+      port: self.config.port,
+    }
+  }
+
+  /// List aggregates, optionally restricting to a specific aggregate type.
+  #[napi(js_name = "list")]
+  pub async fn list_aggregates(
+    &self,
+    aggregate_type: Option<String>,
+    options: Option<PageOptions>,
+  ) -> napi::Result<Vec<serde_json::Value>> {
+    let mut guard = self.state.lock().await;
+    let client = guard
+      .client
+      .as_mut()
+      .ok_or_else(|| napi_err(Status::GenericFailure, "client is not connected"))?;
+    let skip = options.as_ref().and_then(|o| o.skip).unwrap_or(0) as usize;
+    let take = options.as_ref().and_then(|o| o.take.map(|v| v as usize));
+
+    let aggregates = client
+      .list_aggregates(skip, take)
+      .await
+      .map_err(control_err_to_napi)?;
+
+    let filter = aggregate_type.as_deref();
+    let result = aggregates
+      .into_iter()
+      .filter(|agg| match filter {
+        Some(kind) => agg.aggregate_type == kind,
+        None => true,
+      })
+      .map(aggregate_to_json)
+      .collect();
+
+    Ok(result)
+  }
+
+  /// Fetch a single aggregate snapshot.
+  #[napi(js_name = "get")]
+  pub async fn get_aggregate(
+    &self,
+    aggregate_type: String,
+    aggregate_id: String,
+  ) -> napi::Result<Option<serde_json::Value>> {
+    let mut guard = self.state.lock().await;
+    let client = guard
+      .client
+      .as_mut()
+      .ok_or_else(|| napi_err(Status::GenericFailure, "client is not connected"))?;
+    let aggregate = client
+      .get_aggregate(&aggregate_type, &aggregate_id)
+      .await
+      .map_err(control_err_to_napi)?;
+
+    Ok(aggregate.map(aggregate_to_json))
+  }
+
+  /// List events for an aggregate.
+  #[napi(js_name = "events")]
+  pub async fn list_events(
+    &self,
+    aggregate_type: String,
+    aggregate_id: String,
+    options: Option<PageOptions>,
+  ) -> napi::Result<Vec<serde_json::Value>> {
+    let mut guard = self.state.lock().await;
+    let client = guard
+      .client
+      .as_mut()
+      .ok_or_else(|| napi_err(Status::GenericFailure, "client is not connected"))?;
+    let skip = options.as_ref().and_then(|o| o.skip).unwrap_or(0) as usize;
+    let take = options.as_ref().and_then(|o| o.take.map(|v| v as usize));
+
+    let events = client
+      .list_events(&aggregate_type, &aggregate_id, skip, take)
+      .await
+      .map_err(control_err_to_napi)?;
+
+    Ok(events.into_iter().map(event_to_json).collect())
+  }
+
+  /// Append a new event with an arbitrary JSON payload.
+  #[napi(js_name = "create")]
+  pub async fn append_event(
+    &self,
+    aggregate_type: String,
+    aggregate_id: String,
+    event_type: String,
+    options: Option<AppendOptions>,
+  ) -> napi::Result<serde_json::Value> {
+    let mut guard = self.state.lock().await;
+    let client = guard
+      .client
+      .as_mut()
+      .ok_or_else(|| napi_err(Status::GenericFailure, "client is not connected"))?;
+    let opts = options.unwrap_or(AppendOptions {
+      payload: None,
+      metadata: None,
+      note: None,
+      token: None,
+    });
+
+    let request = AppendEventRequest {
+      token: opts
+        .token
+        .or_else(|| self.config.token.clone())
+        .unwrap_or_default(),
+      aggregate_type,
+      aggregate_id,
+      event_type,
+      payload: opts.payload,
+      metadata: opts.metadata,
+      note: opts.note,
+    };
+
+    let record = client
+      .append_event(request)
+      .await
+      .map_err(control_err_to_napi)?;
+
+    Ok(event_to_json(record))
+  }
+
+  /// Apply a JSON Patch to the aggregate. Returns the updated snapshot.
+  #[napi(js_name = "patch")]
+  pub async fn patch_aggregate(
+    &self,
+    aggregate_type: String,
+    aggregate_id: String,
+    event_type: String,
+    operations: Vec<serde_json::Value>,
+    options: Option<PatchOptions>,
+  ) -> napi::Result<serde_json::Value> {
+    let mut guard = self.state.lock().await;
+    let client = guard
+      .client
+      .as_mut()
+      .ok_or_else(|| napi_err(Status::GenericFailure, "client is not connected"))?;
+    let opts = options.unwrap_or(PatchOptions {
+      metadata: None,
+      note: None,
+      token: None,
+    });
+
+    let patch = JsonValue::Array(operations);
+    let request = PatchEventRequest {
+      token: opts
+        .token
+        .or_else(|| self.config.token.clone())
+        .unwrap_or_default(),
+      aggregate_type: aggregate_type.clone(),
+      aggregate_id: aggregate_id.clone(),
+      event_type,
+      patch,
+      metadata: opts.metadata,
+      note: opts.note,
+    };
+
+    client
+      .patch_event(request)
+      .await
+      .map_err(control_err_to_napi)?;
+
+    let aggregate = client
+      .get_aggregate(&aggregate_type, &aggregate_id)
+      .await
+      .map_err(control_err_to_napi)?
+      .ok_or_else(|| napi_err(Status::GenericFailure, "aggregate not found after patch"))?;
+
+    Ok(aggregate_to_json(aggregate))
+  }
+}
+
+#[napi]
+pub fn create_client(options: Option<ClientOptions>) -> DbxClient {
+  DbxClient::new(options)
+}
+
+#[napi(object)]
+pub struct ClientEndpoint {
+  pub ip: String,
+  pub port: u16,
+}
+
+fn aggregate_to_json(view: AggregateStateView) -> serde_json::Value {
+  let mut state_map = JsonMap::new();
+  for (key, raw_value) in view.state {
+    state_map.insert(key, parse_state_value(&raw_value));
+  }
+
+  json!({
+      "aggregateType": view.aggregate_type,
+      "aggregateId": view.aggregate_id,
+      "version": view.version,
+      "state": JsonValue::Object(state_map),
+      "merkleRoot": view.merkle_root,
+      "archived": view.archived,
+  })
+}
+
+fn parse_state_value(raw: &str) -> JsonValue {
+  serde_json::from_str(raw).unwrap_or_else(|_| JsonValue::String(raw.to_string()))
+}
+
+fn event_to_json(record: StoredEventRecord) -> JsonValue {
+  serde_json::to_value(record).unwrap_or_else(|_| JsonValue::Null)
+}
+
+fn control_err_to_napi(err: ControlClientError) -> napi::Error {
+  match err {
+    ControlClientError::Io(inner) => napi_err(Status::GenericFailure, inner.to_string()),
+    ControlClientError::Capnp(inner) => napi_err(Status::GenericFailure, inner.to_string()),
+    ControlClientError::Server { code, message } => napi_err(
+      Status::GenericFailure,
+      format!("server error ({code}): {message}"),
+    ),
+    ControlClientError::Protocol(msg) => napi_err(Status::GenericFailure, msg),
+    ControlClientError::Json(inner) => napi_err(Status::GenericFailure, inner.to_string()),
+  }
+}
+
+fn napi_err(status: Status, reason: impl Into<String>) -> napi::Error {
+  napi::Error::new(status, reason.into())
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use chrono::Utc;
+  use std::collections::BTreeMap;
+
+  fn sample_aggregate() -> AggregateStateView {
+    AggregateStateView {
+      aggregate_type: "person".into(),
+      aggregate_id: "p-001".into(),
+      version: 7,
+      state: BTreeMap::from([
+        ("name".into(), "\"Jane Doe\"".into()),
+        ("age".into(), "42".into()),
+        ("active".into(), "true".into()),
+        ("notes".into(), "[\"vip\",\"beta\"]".into()),
+      ]),
+      merkle_root: "abc123".into(),
+      archived: false,
+    }
+  }
+
+  #[test]
+  fn aggregate_to_json_flattens_and_parses_values() {
+    let view = sample_aggregate();
+    let json = aggregate_to_json(view);
+    let obj = json.as_object().expect("expected object");
+
+    assert_eq!(obj.get("aggregateType").unwrap(), "person");
+    assert_eq!(obj.get("aggregateId").unwrap(), "p-001");
+    assert_eq!(obj.get("version").unwrap(), 7);
+    assert_eq!(obj.get("merkleRoot").unwrap(), "abc123");
+    assert_eq!(obj.get("archived").unwrap(), &JsonValue::Bool(false));
+
+    let state = obj
+      .get("state")
+      .and_then(JsonValue::as_object)
+      .expect("state should be object");
+    assert_eq!(state.get("name").unwrap(), "Jane Doe");
+    assert_eq!(state.get("age").unwrap(), 42);
+    assert_eq!(state.get("active").unwrap(), &JsonValue::Bool(true));
+    assert_eq!(state.get("notes").unwrap(), &json!(["vip", "beta"]));
+  }
+
+  #[test]
+  fn parse_state_value_handles_invalid_json_as_string() {
+    let value = parse_state_value("not-json");
+    assert_eq!(value, JsonValue::String("not-json".into()));
+  }
+
+  #[test]
+  fn event_to_json_round_trips_record() {
+    let record = StoredEventRecord {
+      aggregate_type: "order".into(),
+      aggregate_id: "o-1".into(),
+      event_type: "order_created".into(),
+      version: 1,
+      payload: json!({"total": 99}),
+      metadata: crate::plugin_api::EventMetadataView {
+        event_id: "123".into(),
+        created_at: Utc::now(),
+        issued_by: None,
+        note: None,
+      },
+      hash: "hash".into(),
+      merkle_root: "root".into(),
+    };
+
+    let json = event_to_json(record.clone());
+    let round_trip: StoredEventRecord = serde_json::from_value(json).expect("round trip");
+    assert_eq!(round_trip.aggregate_type, record.aggregate_type);
+    assert_eq!(round_trip.payload, record.payload);
+    assert_eq!(round_trip.hash, record.hash);
+  }
 }
