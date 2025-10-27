@@ -327,7 +327,10 @@ impl ControlClient {
   }
 
   /// Append an event to an aggregate.
-  pub async fn append_event(&mut self, request: AppendEventRequest) -> ControlResult<StoredEventRecord> {
+  pub async fn append_event(
+    &mut self,
+    request: AppendEventRequest,
+  ) -> ControlResult<StoredEventRecord> {
     let payload_json = request
       .payload
       .as_ref()
@@ -392,7 +395,10 @@ impl ControlClient {
   }
 
   /// Apply a JSON Patch to an aggregate, recording a new event.
-  pub async fn patch_event(&mut self, request: PatchEventRequest) -> ControlResult<StoredEventRecord> {
+  pub async fn patch_event(
+    &mut self,
+    request: PatchEventRequest,
+  ) -> ControlResult<StoredEventRecord> {
     if !request.patch.is_array() {
       return Err(ControlClientError::Protocol(
         "patch payload must be a JSON array".into(),
