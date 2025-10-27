@@ -396,19 +396,47 @@ jobs:
       - name: List packages
         run: ls -R ./npm
         shell: bash
+      - name: Read version from Cargo.toml
+        id: version
+        run: |
+          VERSION=$(python - <<'PY'
+          from pathlib import Path
+
+          content = Path("Cargo.toml").read_text().splitlines()
+          in_package = False
+          version = None
+          for raw_line in content:
+              line = raw_line.strip()
+              if line.startswith("["):
+                  in_package = line == "[package]"
+                  continue
+              if in_package and line.startswith("version"):
+                  _, value = line.split("=", 1)
+                  version = value.strip().strip('"')
+                  break
+
+          if not version:
+              raise SystemExit("Failed to parse [package].version from Cargo.toml")
+
+          print(version)
+          PY
+          )
+          if [ -z "$VERSION" ]; then
+            echo "Failed to parse version from Cargo.toml" >&2
+            exit 1
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "TAG=v$VERSION" >> "$GITHUB_OUTPUT"
       - name: Publish
         run: |
           npm config set provenance true
-          if git log -1 --pretty=%B | grep "^v\?[0-9]\+\.[0-9]\+\.[0-9]\+$";
-          then
-            echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" >> ~/.npmrc
-            npm publish --access public
-          elif git log -1 --pretty=%B | grep "^v\?[0-9]\+\.[0-9]\+\.[0-9]\+";
-          then
-            echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" >> ~/.npmrc
+          VERSION='${{ steps.version.outputs.VERSION }}'
+          echo "Preparing to publish version $VERSION"
+          echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" >> ~/.npmrc
+          if [[ "$VERSION" == *-* ]]; then
             npm publish --tag next --access public
           else
-            echo "Not a release, skipping publish"
+            npm publish --access public
           fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
