@@ -1,8 +1,11 @@
 import test from 'ava'
 
-import { plus100 } from '../index.js'
+import { createClient } from '../index.js'
 
-test('sync function from native code', (t) => {
-  const fixture = 42
-  t.is(plus100(fixture), fixture + 100)
+test('native module exports createClient helper', (t) => {
+  const client = createClient()
+  t.truthy(client)
+  t.is(typeof client.connect, 'function')
+  t.is(typeof client.disconnect, 'function')
+  t.deepEqual(client.endpoint, { ip: '127.0.0.1', port: 6363 })
 })

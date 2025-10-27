@@ -1,5 +1,9 @@
-// const { plus100 } = require('./index')
+const { createClient } = require('./index')
 
-// console.assert(plus100(0) === 100, 'Simple test failed')
+const client = createClient()
+
+if (typeof client !== 'object') {
+    throw new Error('createClient did not return an object')
+}
 
 console.info('Simple test passed')

@@ -114,5 +114,21 @@
     "singleQuote": true,
     "arrowParens": "always"
   },
-  "packageManager": "pnpm@10.19.0"
+  "packageManager": "pnpm@10.19.0",
+  "optionalDependencies": {
+    "eventdbxjs-darwin-x64": "1.1.1",
+    "eventdbxjs-darwin-arm64": "1.1.1",
+    "eventdbxjs-linux-x64-gnu": "1.1.1",
+    "eventdbxjs-win32-x64-msvc": "1.1.1",
+    "eventdbxjs-linux-x64-musl": "1.1.1",
+    "eventdbxjs-linux-arm64-gnu": "1.1.1",
+    "eventdbxjs-win32-ia32-msvc": "1.1.1",
+    "eventdbxjs-linux-arm-gnueabihf": "1.1.1",
+    "eventdbxjs-android-arm64": "1.1.1",
+    "eventdbxjs-freebsd-x64": "1.1.1",
+    "eventdbxjs-linux-arm64-musl": "1.1.1",
+    "eventdbxjs-win32-arm64-msvc": "1.1.1",
+    "eventdbxjs-android-arm-eabi": "1.1.1",
+    "eventdbxjs-wasm32-wasi": "1.1.1"
+  }
 }
