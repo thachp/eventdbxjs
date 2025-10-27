@@ -205,6 +205,28 @@ impl DbxClient {
     Ok(aggregate.map(aggregate_to_json))
   }
 
+  /// Select a subset of fields from an aggregate snapshot.
+  #[napi(js_name = "select")]
+  pub async fn select_aggregate(
+    &self,
+    aggregate_type: String,
+    aggregate_id: String,
+    fields: Vec<String>,
+  ) -> napi::Result<Option<serde_json::Value>> {
+    let mut guard = self.state.lock().await;
+    let client = guard
+      .client
+      .as_mut()
+      .ok_or_else(|| napi_err(Status::GenericFailure, "client is not connected"))?;
+
+    let selection = client
+      .select_aggregate(&aggregate_type, &aggregate_id, &fields)
+      .await
+      .map_err(control_err_to_napi)?;
+
+    Ok(selection)
+  }
+
   /// List events for an aggregate.
   #[napi(js_name = "events")]
   pub async fn list_events(

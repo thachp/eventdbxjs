@@ -14,6 +14,8 @@ export declare class DbxClient {
   list(aggregateType?: string | undefined | null, options?: PageOptions | undefined | null): Promise<Array<any>>
   /** Fetch a single aggregate snapshot. */
   get(aggregateType: string, aggregateId: string): Promise<any | null>
+  /** Select a subset of fields from an aggregate snapshot. */
+  select(aggregateType: string, aggregateId: string, fields: Array<string>): Promise<any | null>
   /** List events for an aggregate. */
   events(aggregateType: string, aggregateId: string, options?: PageOptions | undefined | null): Promise<Array<any>>
   /** Append a new event with an arbitrary JSON payload. */

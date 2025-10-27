@@ -4,6 +4,52 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+dependencies:
+  eventdbxjs:
+    specifier: ^1.1.1
+    version: 1.1.1
+
+optionalDependencies:
+  eventdbxjs-android-arm-eabi:
+    specifier: 1.1.1
+    version: 1.1.1
+  eventdbxjs-android-arm64:
+    specifier: 1.1.1
+    version: 1.1.1
+  eventdbxjs-darwin-arm64:
+    specifier: 1.1.1
+    version: 1.1.1
+  eventdbxjs-darwin-x64:
+    specifier: 1.1.1
+    version: 1.1.1
+  eventdbxjs-freebsd-x64:
+    specifier: 1.1.1
+    version: 1.1.1
+  eventdbxjs-linux-arm-gnueabihf:
+    specifier: 1.1.1
+    version: 1.1.1
+  eventdbxjs-linux-arm64-gnu:
+    specifier: 1.1.1
+    version: 1.1.1
+  eventdbxjs-linux-arm64-musl:
+    specifier: 1.1.1
+    version: 1.1.1
+  eventdbxjs-linux-x64-gnu:
+    specifier: 1.1.1
+    version: 1.1.1
+  eventdbxjs-linux-x64-musl:
+    specifier: 1.1.1
+    version: 1.1.1
+  eventdbxjs-win32-arm64-msvc:
+    specifier: 1.1.1
+    version: 1.1.1
+  eventdbxjs-win32-ia32-msvc:
+    specifier: 1.1.1
+    version: 1.1.1
+  eventdbxjs-win32-x64-msvc:
+    specifier: 1.1.1
+    version: 1.1.1
+
 devDependencies:
   '@emnapi/core':
     specifier: ^1.5.0
@@ -337,6 +383,8 @@ packages:
       '@emnapi/runtime': ^1.5.0
     peerDependenciesMeta:
       '@emnapi/runtime':
+        optional: true
+      emnapi:
         optional: true
     dependencies:
       '@emnapi/runtime': 1.6.0
@@ -1735,6 +1783,142 @@ packages:
     resolution: {integrity: sha512-kVscqXk4OCp68SZ0dkgEKVi6/8ij300KBWTJq32P/dYeWTSwK41WyTxalN1eRmA5Z9UU/LX9D7FWSmV9SAYx6g==}
     engines: {node: '>=0.10.0'}
     dev: true
+
+  /eventdbxjs-android-arm-eabi@1.1.1:
+    resolution: {integrity: sha512-rwSxLnyn+QVTFjJOOyJAiF9P6BjwSo/JsIUBmDxj/QnLQaWP1B0xypNhi1Cbak7z2keve2hzqKD63T6gCUKoKg==}
+    engines: {node: '>= 10'}
+    cpu: [arm]
+    os: [android]
+    requiresBuild: true
+    dev: false
+    optional: true
+
+  /eventdbxjs-android-arm64@1.1.1:
+    resolution: {integrity: sha512-OCJeIn+joSLYnhpGkrC/YwwLM/otn4uhdrbRMBbTsPkDd0w5q4AE15QEkcS9UCt8umD6Wpa9G2oigx8jAX5xzg==}
+    engines: {node: '>= 10'}
+    cpu: [arm64]
+    os: [android]
+    requiresBuild: true
+    dev: false
+    optional: true
+
+  /eventdbxjs-darwin-arm64@1.1.1:
+    resolution: {integrity: sha512-sEoeV+989+ZJomz6Brn8jSpVBbZPm1OHi6h0t+rxMxakWWXjEhYTyRg/3U9YY61TBRd+Y+957kJxv+SzF+GLLQ==}
+    engines: {node: '>= 10'}
+    cpu: [arm64]
+    os: [darwin]
+    requiresBuild: true
+    dev: false
+    optional: true
+
+  /eventdbxjs-darwin-x64@1.1.1:
+    resolution: {integrity: sha512-eSpkQJF1kZ6jXujEaO3k4ZokrdxlajhizmialRnMOcuBfnOmPfaMpPjOjYdSPgAqda4CnQrmj0jwHgTYJ6CjMg==}
+    engines: {node: '>= 10'}
+    cpu: [x64]
+    os: [darwin]
+    requiresBuild: true
+    dev: false
+    optional: true
+
+  /eventdbxjs-freebsd-x64@1.1.1:
+    resolution: {integrity: sha512-xfanTSs46ndTS2gP7rnaDT2F0kQs41+onLzsX/gZPLmJT1DXefzzqzPBvoSl2CBK3/Jc+DWpPT+iYkRyitIGNw==}
+    engines: {node: '>= 10'}
+    cpu: [x64]
+    os: [freebsd]
+    requiresBuild: true
+    dev: false
+    optional: true
+
+  /eventdbxjs-linux-arm-gnueabihf@1.1.1:
+    resolution: {integrity: sha512-lVo+lXSYElG6Wzyz1nngub5lZbYbLIc+JsDNr/9p7T5jssyyEVuf+wxcpfkT3HNC3dCSkJ80KaFCTF/kX3tfYA==}
+    engines: {node: '>= 10'}
+    cpu: [arm]
+    os: [linux]
+    requiresBuild: true
+    dev: false
+    optional: true
+
+  /eventdbxjs-linux-arm64-gnu@1.1.1:
+    resolution: {integrity: sha512-5t4AKTwjSHDreTS67Frw0nHU79Bi3/fHSxzYWDhKKDjqrLLyjAlEch3M7ovZ/iZyRPhKl3vp7rla5wJVwM4yNA==}
+    engines: {node: '>= 10'}
+    cpu: [arm64]
+    os: [linux]
+    requiresBuild: true
+    dev: false
+    optional: true
+
+  /eventdbxjs-linux-arm64-musl@1.1.1:
+    resolution: {integrity: sha512-24BATKHkaozIoY+OIzB1QshINeizoJuV6XAv22Ngzyu8d8oh7DH+3hH9XeMgtM2+1H+dCXMpVClCa6ij4kfmFg==}
+    engines: {node: '>= 10'}
+    cpu: [arm64]
+    os: [linux]
+    requiresBuild: true
+    dev: false
+    optional: true
+
+  /eventdbxjs-linux-x64-gnu@1.1.1:
+    resolution: {integrity: sha512-1Z3G1B/bumI1u+q4NK38OSg37IAX3Hp0cbmFp/92sjZUOtp+eKEwMYMnOIDVYrHRcsrprBCTbiA+rvuXZwV3vQ==}
+    engines: {node: '>= 10'}
+    cpu: [x64]
+    os: [linux]
+    requiresBuild: true
+    dev: false
+    optional: true
+
+  /eventdbxjs-linux-x64-musl@1.1.1:
+    resolution: {integrity: sha512-1lMLatTwWGepHLZcdth0LazMKNdE0EE1C+O1g04jl0QmpuYTudaQE4fIFS8YqoO0cTsXsOlHVJMPyQKdMA1KTg==}
+    engines: {node: '>= 10'}
+    cpu: [x64]
+    os: [linux]
+    requiresBuild: true
+    dev: false
+    optional: true
+
+  /eventdbxjs-win32-arm64-msvc@1.1.1:
+    resolution: {integrity: sha512-0opS58XeoUNUYKM8Tx/ULYjSlK/WjUj9HGB+PjaaqLQ7q81U92+ELYl2BnD1u5kvc4EU6km+sk271QQ32UsdDQ==}
+    engines: {node: '>= 10'}
+    cpu: [arm64]
+    os: [win32]
+    requiresBuild: true
+    dev: false
+    optional: true
+
+  /eventdbxjs-win32-ia32-msvc@1.1.1:
+    resolution: {integrity: sha512-bLBlnLfcCawoV5YukJ3GNAPLmLlWJtZ1yZAd+FPRIgWW67oGhitsJ63/8EaLn/qOmMB9pEPqA6I4hVEFsrG8Bg==}
+    engines: {node: '>= 10'}
+    cpu: [ia32]
+    os: [win32]
+    requiresBuild: true
+    dev: false
+    optional: true
+
+  /eventdbxjs-win32-x64-msvc@1.1.1:
+    resolution: {integrity: sha512-G4pqec2FlqNiHCAfgqmsV2SZK9EJ6zoiCSzu7S28smnvVnbkUta6z6Ef3KvS+0AiLdZq+Pq6HzzgGNNHPr2fnw==}
+    engines: {node: '>= 10'}
+    cpu: [x64]
+    os: [win32]
+    requiresBuild: true
+    dev: false
+    optional: true
+
+  /eventdbxjs@1.1.1:
+    resolution: {integrity: sha512-+7Iz7iRyn8wt4EfzdQUOj7NoPFtRJMFs6j2eDrINZmjMJOZoK768MgFnjNmVMC62wN1g0lFnsWdmTj+t6QlkBA==}
+    engines: {node: '>= 10'}
+    optionalDependencies:
+      eventdbxjs-android-arm-eabi: 1.1.1
+      eventdbxjs-android-arm64: 1.1.1
+      eventdbxjs-darwin-arm64: 1.1.1
+      eventdbxjs-darwin-x64: 1.1.1
+      eventdbxjs-freebsd-x64: 1.1.1
+      eventdbxjs-linux-arm-gnueabihf: 1.1.1
+      eventdbxjs-linux-arm64-gnu: 1.1.1
+      eventdbxjs-linux-arm64-musl: 1.1.1
+      eventdbxjs-linux-x64-gnu: 1.1.1
+      eventdbxjs-linux-x64-musl: 1.1.1
+      eventdbxjs-win32-arm64-msvc: 1.1.1
+      eventdbxjs-win32-ia32-msvc: 1.1.1
+      eventdbxjs-win32-x64-msvc: 1.1.1
+    dev: false
 
   /eventemitter3@5.0.1:
     resolution: {integrity: sha512-GWkBvjiSZK87ELrYOSESUYeVIc9mvLLf/nXalMOS5dYrgZq9o5OVkbZAVM06CVxYsCwH9BDZFPlQTlPA1j4ahA==}

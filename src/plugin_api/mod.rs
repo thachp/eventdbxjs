@@ -326,6 +326,58 @@ impl ControlClient {
       .await
   }
 
+  /// Select specific fields from an aggregate snapshot.
+  pub async fn select_aggregate(
+    &mut self,
+    aggregate_type: &str,
+    aggregate_id: &str,
+    fields: &[String],
+  ) -> ControlResult<Option<JsonValue>> {
+    let field_count = u32::try_from(fields.len())
+      .map_err(|_| ControlClientError::Protocol("fields length exceeds u32 range".into()))?;
+
+    let request_id = self.next_request_id();
+    let mut message = Builder::new_default();
+    {
+      let mut request = message.init_root::<control_capnp::control_request::Builder>();
+      request.set_id(request_id);
+      let payload = request.reborrow().init_payload();
+      let mut body = payload.init_select_aggregate();
+      body.set_aggregate_type(aggregate_type.into());
+      body.set_aggregate_id(aggregate_id.into());
+      let mut field_list = body.reborrow().init_fields(field_count);
+      for (idx, field) in fields.iter().enumerate() {
+        field_list.set(idx as u32, field.as_str().into());
+      }
+    }
+
+    self
+      .send_and_parse(message, request_id, |response| {
+        match response.get_payload().which().map_err(|_| {
+          ControlClientError::Protocol("unexpected response payload for selectAggregate".into())
+        })? {
+          control_capnp::control_response::payload::SelectAggregate(resp) => {
+            let resp = resp.map_err(ControlClientError::Capnp)?;
+            if resp.get_found() {
+              let json = read_text_field(resp.get_selection_json(), "selection_json")?;
+              let value = serde_json::from_str::<JsonValue>(&json)?;
+              Ok(Some(value))
+            } else {
+              Ok(None)
+            }
+          }
+          control_capnp::control_response::payload::Error(err) => {
+            let err = err.map_err(ControlClientError::Capnp)?;
+            Err(server_error(err))
+          }
+          _ => Err(ControlClientError::Protocol(
+            "unexpected response to selectAggregate".into(),
+          )),
+        }
+      })
+      .await
+  }
+
   /// Append an event to an aggregate.
   pub async fn append_event(
     &mut self,
@@ -445,7 +497,7 @@ impl ControlClient {
         match response.get_payload().which().map_err(|_| {
           ControlClientError::Protocol("unexpected response payload for patchEvent".into())
         })? {
-          control_capnp::control_response::payload::PatchEvent(resp) => {
+          control_capnp::control_response::payload::AppendEvent(resp) => {
             let resp = resp.map_err(ControlClientError::Capnp)?;
             let json = read_text_field(resp.get_event_json(), "event_json")?;
             let record = serde_json::from_str::<StoredEventRecord>(&json)?;
