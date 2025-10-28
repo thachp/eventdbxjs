@@ -69,9 +69,16 @@ async function main() {
       aggregates.map((agg) => agg.aggregateId),
     )
 
-    await client.create('person', 'p-110', 'person_created', {
+    const snapshot = await client.createAggregate('person', 'p-110', 'person_registered', {
+      payload: { name: 'Jane Doe', status: 'active' },
+      note: 'seed aggregate',
+    })
+    console.log('created aggregate version', snapshot.version)
+
+    await client.create('person', 'p-110', 'person_contact_added', {
       payload: { name: 'Jane Doe', status: 'active' },
       metadata: { note: 'seed data' },
+      requireExisting: true,
     })
 
     await client.patch('person', 'p-110', 'person_status_updated', [
@@ -106,6 +113,8 @@ main().catch((err) => {
 | `client.createAggregate(aggregateType, aggregateId, eventType, options?)`   | Create an aggregate with an initial event payload and return the resulting snapshot.       |
 | `client.patch(aggregateType, aggregateId, eventType, operations, options?)` | Apply an RFC 6902 JSON Patch and return the updated aggregate snapshot.                    |
 | `client.select(aggregateType, aggregateId, fields)`                         | Resolve with a JSON object containing only the requested fields when the aggregate exists. |
+
+`PageOptions` supports `{ take, skip, includeArchived, archivedOnly }` for fine-grained pagination. Set `archivedOnly` to `true` to request archived aggregates exclusively—`includeArchived` is inferred when you do. When appending events, pass `requireExisting: true` if the aggregate must predate the write. `createAggregate` always requires an `eventType` and accepts optional `payload`, `metadata`, and `note` to seed the first snapshot.
 
 ## Runtime Configuration
 
