@@ -114,6 +114,7 @@ test('client exposes expected API surface', (t) => {
   t.is(typeof client.select, 'function')
   t.is(typeof client.events, 'function')
   t.is(typeof client.create, 'function')
+  t.is(typeof client.createAggregate, 'function')
   t.is(typeof client.patch, 'function')
   t.deepEqual(client.endpoint, { ip: baseOptions.ip, port: baseOptions.port })
 })
@@ -167,6 +168,7 @@ const runMockedControlOperations = async (t: ExecutionContext) => {
   ]
   const created = { ...events[0], version: 8, eventType: 'Updated' }
   const patched = { ...aggregate, version: 8 }
+  const createdAggregate = { ...aggregate, aggregateId: 'p-002', version: 1 }
 
   const client = buildClient()
 
@@ -211,13 +213,33 @@ const runMockedControlOperations = async (t: ExecutionContext) => {
       aggregateType: string,
       aggregateId: string,
       eventType: string,
-      options: { payload: { name: string }; token: string },
+      options: { payload: { name: string }; token: string; requireExisting: boolean },
     ) => {
       t.is(aggregateType, 'person')
       t.is(aggregateId, 'p-001')
       t.is(eventType, 'Updated')
-      t.deepEqual(options, { payload: { name: 'Jane Doe' }, token: 'custom-token' })
+      t.deepEqual(options, { payload: { name: 'Jane Doe' }, token: 'custom-token', requireExisting: true })
       return created
+    },
+  )
+  overrideMethod(
+    client,
+    'createAggregate',
+    async (
+      aggregateType: string,
+      aggregateId: string,
+      eventType: string,
+      options: { token: string; payload: { name: string }; note: string },
+    ) => {
+      t.is(aggregateType, 'person')
+      t.is(aggregateId, 'p-002')
+      t.is(eventType, 'PersonCreated')
+      t.deepEqual(options, {
+        token: 'custom-token',
+        payload: { name: 'Jane Doe' },
+        note: 'created via test',
+      })
+      return createdAggregate
     },
   )
   overrideMethod(
@@ -250,8 +272,17 @@ const runMockedControlOperations = async (t: ExecutionContext) => {
     await client.create('person', 'p-001', 'Updated', {
       payload: { name: 'Jane Doe' },
       token: 'custom-token',
+      requireExisting: true,
     }),
     created,
+  )
+  t.deepEqual(
+    await client.createAggregate('person', 'p-002', 'PersonCreated', {
+      token: 'custom-token',
+      payload: { name: 'Jane Doe' },
+      note: 'created via test',
+    }),
+    createdAggregate,
   )
   t.deepEqual(
     await client.patch(
@@ -287,6 +318,14 @@ const runLiveControlOperations = async (t: ExecutionContext) => {
         () =>
           client.create('__test__', '__test__', 'TestEvent', {
             payload: { ping: 'pong' },
+            token: 'invalid-integration-token',
+            requireExisting: false,
+          }),
+      ],
+      [
+        'createAggregate',
+        () =>
+          client.createAggregate('__test__', '__test__', 'IntegrationCreated', {
             token: 'invalid-integration-token',
           }),
       ],
@@ -334,7 +373,8 @@ test('control operations require an active connection', async (t) => {
     ['get', () => client.get('person', 'p-001')],
     ['select', () => client.select('person', 'p-001', ['state.name'])],
     ['events', () => client.events('person', 'p-001')],
-    ['create', () => client.create('person', 'p-001', 'TestEvent')],
+    ['create', () => client.create('person', 'p-001', 'TestEvent', undefined)],
+    ['createAggregate', () => client.createAggregate('person', 'p-001', 'CreateAggregate')],
     ['patch', () => client.patch('person', 'p-001', 'PatchEvent', [{ op: 'replace', path: '/name', value: 'Alice' }])],
   ]
 

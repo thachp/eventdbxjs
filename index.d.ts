@@ -19,7 +19,9 @@ export declare class DbxClient {
   /** List events for an aggregate. */
   events(aggregateType: string, aggregateId: string, options?: PageOptions | undefined | null): Promise<Array<any>>
   /** Append a new event with an arbitrary JSON payload. */
-  create(aggregateType: string, aggregateId: string, eventType: string, options?: AppendOptions | undefined | null): Promise<any>
+  apply(aggregateType: string, aggregateId: string, eventType: string, options?: AppendOptions | undefined | null): Promise<any>
+  /** Create an aggregate and emit its initial event. */
+  create(aggregateType: string, aggregateId: string, eventType: string, options?: CreateAggregateOptions | undefined | null): Promise<any>
   /** Apply a JSON Patch to the aggregate. Returns the updated snapshot. */
   patch(aggregateType: string, aggregateId: string, eventType: string, operations: Array<any>, options?: PatchOptions | undefined | null): Promise<any>
 }
@@ -29,6 +31,7 @@ export interface AppendOptions {
   metadata?: any
   note?: string
   token?: string
+  requireExisting?: boolean
 }
 
 export interface ClientEndpoint {
@@ -42,11 +45,20 @@ export interface ClientOptions {
   token?: string
 }
 
+export interface CreateAggregateOptions {
+  token?: string
+  payload?: any
+  metadata?: any
+  note?: string
+}
+
 export declare function createClient(options?: ClientOptions | undefined | null): DbxClient
 
 export interface PageOptions {
   take?: number
   skip?: number
+  includeArchived?: boolean
+  archivedOnly?: boolean
 }
 
 export interface PatchOptions {

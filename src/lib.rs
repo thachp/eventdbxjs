@@ -10,11 +10,12 @@ use std::sync::Arc;
 pub mod plugin_api;
 
 use crate::plugin_api::{
-  AggregateStateView, AppendEventRequest, ControlClient, ControlClientError, PatchEventRequest,
-  StoredEventRecord,
+  AggregateStateView, AppendEventRequest, ControlClient, ControlClientError,
+  CreateAggregateRequest, PatchEventRequest, StoredEventRecord,
 };
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
+use serde::Deserialize;
 use serde_json::{json, Map as JsonMap, Value as JsonValue};
 use tokio::sync::Mutex;
 
@@ -74,18 +75,25 @@ impl From<ClientOptions> for ClientConfig {
   }
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 #[napi(object)]
 pub struct PageOptions {
   pub take: Option<u32>,
   pub skip: Option<u32>,
+  pub include_archived: Option<bool>,
+  pub archived_only: Option<bool>,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 #[napi(object)]
 pub struct AppendOptions {
   pub payload: Option<serde_json::Value>,
   pub metadata: Option<serde_json::Value>,
   pub note: Option<String>,
   pub token: Option<String>,
+  pub require_existing: Option<bool>,
 }
 
 #[napi(object)]
@@ -93,6 +101,16 @@ pub struct PatchOptions {
   pub metadata: Option<serde_json::Value>,
   pub note: Option<String>,
   pub token: Option<String>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+#[napi(object)]
+pub struct CreateAggregateOptions {
+  pub token: Option<String>,
+  pub payload: Option<serde_json::Value>,
+  pub metadata: Option<serde_json::Value>,
+  pub note: Option<String>,
 }
 
 #[napi]
@@ -166,9 +184,18 @@ impl DbxClient {
       .ok_or_else(|| napi_err(Status::GenericFailure, "client is not connected"))?;
     let skip = options.as_ref().and_then(|o| o.skip).unwrap_or(0) as usize;
     let take = options.as_ref().and_then(|o| o.take.map(|v| v as usize));
+    let archived_only = options
+      .as_ref()
+      .and_then(|o| o.archived_only)
+      .unwrap_or(false);
+    let include_archived = options
+      .as_ref()
+      .and_then(|o| o.include_archived)
+      .unwrap_or(false)
+      || archived_only;
 
     let aggregates = client
-      .list_aggregates(skip, take)
+      .list_aggregates(skip, take, include_archived, archived_only)
       .await
       .map_err(control_err_to_napi)?;
 
@@ -252,7 +279,7 @@ impl DbxClient {
   }
 
   /// Append a new event with an arbitrary JSON payload.
-  #[napi(js_name = "create")]
+  #[napi(js_name = "apply")]
   pub async fn append_event(
     &self,
     aggregate_type: String,
@@ -270,19 +297,27 @@ impl DbxClient {
       metadata: None,
       note: None,
       token: None,
+      require_existing: None,
     });
+    let AppendOptions {
+      payload,
+      metadata,
+      note,
+      token,
+      require_existing,
+    } = opts;
 
     let request = AppendEventRequest {
-      token: opts
-        .token
+      token: token
         .or_else(|| self.config.token.clone())
         .unwrap_or_default(),
       aggregate_type,
       aggregate_id,
       event_type,
-      payload: opts.payload,
-      metadata: opts.metadata,
-      note: opts.note,
+      payload,
+      metadata,
+      note,
+      require_existing: require_existing.unwrap_or(false),
     };
 
     let record = client
@@ -291,6 +326,49 @@ impl DbxClient {
       .map_err(control_err_to_napi)?;
 
     Ok(event_to_json(record))
+  }
+
+  /// Create an aggregate and emit its initial event.
+  #[napi(js_name = "create")]
+  pub async fn create_aggregate(
+    &self,
+    aggregate_type: String,
+    aggregate_id: String,
+    event_type: String,
+    options: Option<CreateAggregateOptions>,
+  ) -> napi::Result<serde_json::Value> {
+    let mut guard = self.state.lock().await;
+    let client = guard
+      .client
+      .as_mut()
+      .ok_or_else(|| napi_err(Status::GenericFailure, "client is not connected"))?;
+    let opts = options.unwrap_or_default();
+    let CreateAggregateOptions {
+      token,
+      payload,
+      metadata,
+      note,
+    } = opts;
+    let token = token
+      .or_else(|| self.config.token.clone())
+      .unwrap_or_default();
+
+    let request = CreateAggregateRequest {
+      token,
+      aggregate_type,
+      aggregate_id,
+      event_type,
+      payload,
+      metadata,
+      note,
+    };
+
+    let aggregate = client
+      .create_aggregate(request)
+      .await
+      .map_err(control_err_to_napi)?;
+
+    Ok(aggregate_to_json(aggregate))
   }
 
   /// Apply a JSON Patch to the aggregate. Returns the updated snapshot.
