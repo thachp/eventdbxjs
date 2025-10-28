@@ -69,13 +69,14 @@ async function main() {
       aggregates.map((agg) => agg.aggregateId),
     )
 
-    const snapshot = await client.createAggregate('person', 'p-110', 'person_registered', {
+    const snapshot = await client.create('person', 'p-110', 'person_registered', {
       payload: { name: 'Jane Doe', status: 'active' },
+      metadata: { source: 'seed-script' },
       note: 'seed aggregate',
     })
     console.log('created aggregate version', snapshot.version)
 
-    await client.create('person', 'p-110', 'person_contact_added', {
+    await client.apply('person', 'p-110', 'person_contact_added', {
       payload: { name: 'Jane Doe', status: 'active' },
       metadata: { note: 'seed data' },
       requireExisting: true,
@@ -84,6 +85,10 @@ async function main() {
     await client.patch('person', 'p-110', 'person_status_updated', [
       { op: 'replace', path: '/status', value: 'inactive' },
     ])
+
+    await client.archive('person', 'p-110', {
+      comment: 'cleanup test data',
+    })
 
     const history = await client.events('person', 'p-110')
     console.log('event count:', history.length)
@@ -109,12 +114,14 @@ main().catch((err) => {
 | `client.list(aggregateType?, page?)`                                        | Fetch a page of aggregate snapshots, optionally filtered by type.                          |
 | `client.get(aggregateType, aggregateId)`                                    | Resolve with the latest snapshot or `null` if none exists.                                 |
 | `client.events(aggregateType, aggregateId, page?)`                          | Enumerate historical events for an aggregate.                                              |
-| `client.create(aggregateType, aggregateId, eventType, options?)`            | Append an event with JSON payload/metadata and return the stored event.                    |
-| `client.createAggregate(aggregateType, aggregateId, eventType, options?)`   | Create an aggregate with an initial event payload and return the resulting snapshot.       |
+| `client.apply(aggregateType, aggregateId, eventType, options?)`             | Append an event with JSON payload/metadata and return the stored event.                    |
+| `client.create(aggregateType, aggregateId, eventType, options?)`            | Create an aggregate with an initial event payload and return the resulting snapshot.       |
+| `client.archive(aggregateType, aggregateId, options?)`                      | Mark an aggregate as archived and return the updated snapshot.                             |
+| `client.restore(aggregateType, aggregateId, options?)`                      | Restore an archived aggregate and return the updated snapshot.                              |
 | `client.patch(aggregateType, aggregateId, eventType, operations, options?)` | Apply an RFC 6902 JSON Patch and return the updated aggregate snapshot.                    |
 | `client.select(aggregateType, aggregateId, fields)`                         | Resolve with a JSON object containing only the requested fields when the aggregate exists. |
 
-`PageOptions` supports `{ take, skip, includeArchived, archivedOnly }` for fine-grained pagination. Set `archivedOnly` to `true` to request archived aggregates exclusively—`includeArchived` is inferred when you do. When appending events, pass `requireExisting: true` if the aggregate must predate the write. `createAggregate` always requires an `eventType` and accepts optional `payload`, `metadata`, and `note` to seed the first snapshot.
+`PageOptions` supports `{ take, skip, includeArchived, archivedOnly }` for fine-grained pagination. Set `archivedOnly` to `true` to request archived aggregates exclusively—`includeArchived` is inferred when you do. When appending events with `client.apply`, pass `requireExisting: true` if the aggregate must predate the write. `client.create` always requires an `eventType` and accepts optional `payload`, `metadata`, and `note` to seed the first snapshot. Use `client.archive`/`client.restore` with `{ comment }` to record why an aggregate changed archive state.
 
 ## Runtime Configuration
 
@@ -163,7 +170,7 @@ interface PageOptions {
 interface AppendOptions {
   payload?: Json
   metadata?: Json
-  note?: string | null
+  note?: string
   token?: string
   requireExisting?: boolean
 }
@@ -172,12 +179,17 @@ interface CreateAggregateOptions {
   token?: string
   payload?: Json
   metadata?: Json
-  note?: string | null
+  note?: string
+}
+
+interface SetArchiveOptions {
+  token?: string
+  comment?: string
 }
 
 interface PatchOptions {
   metadata?: Json
-  note?: string | null
+  note?: string
   token?: string
 }
 
@@ -222,18 +234,34 @@ class DbxClient {
   list<TState = Json>(aggregateType?: string, opts?: PageOptions): Promise<Aggregate<TState>[]>
   get<TState = Json>(aggregateType: string, aggregateId: string): Promise<Aggregate<TState> | null>
   events<TPayload = Json>(aggregateType: string, aggregateId: string, opts?: PageOptions): Promise<Event<TPayload>[]>
-  create<TPayload = Json>(
+  apply<TPayload = Json>(
     aggregateType: string,
     aggregateId: string,
     eventType: string,
     opts?: AppendOptions,
   ): Promise<Event<TPayload>>
-  createAggregate<TState = Json>(
+  create<TState = Json>(
     aggregateType: string,
     aggregateId: string,
     eventType: string,
     opts?: CreateAggregateOptions,
-  ): Promise<Aggregate<TState>>
+  ): Promise<any>
+  archive<TState = Json>(
+    aggregateType: string,
+    aggregateId: string,
+    opts?: SetArchiveOptions,
+  ): Promise<any>
+  restore<TState = Json>(
+    aggregateType: string,
+    aggregateId: string,
+    opts?: SetArchiveOptions,
+  ): Promise<any>
+  setArchived<TState = Json>(
+    aggregateType: string,
+    aggregateId: string,
+    archived: boolean,
+    opts?: SetArchiveOptions,
+  ): Promise<any>
   patch<TState = Json>(
     aggregateType: string,
     aggregateId: string,
@@ -246,6 +274,8 @@ class DbxClient {
 
 declare function createClient(options?: ClientOptions): DbxClient
 ```
+
+> The generated TypeScript declarations currently expose `any` for JSON payloads and snapshots; the runtime values still follow the `Aggregate`/`Event` shapes shown above.
 
 All methods return Promises and throw regular JavaScript `Error` instances on failure (network issues, protocol validation errors, rejected patch operations, etc.) — wrap awaited calls in `try/catch`.
 

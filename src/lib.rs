@@ -11,7 +11,7 @@ pub mod plugin_api;
 
 use crate::plugin_api::{
   AggregateStateView, AppendEventRequest, ControlClient, ControlClientError,
-  CreateAggregateRequest, PatchEventRequest, StoredEventRecord,
+  CreateAggregateRequest, PatchEventRequest, SetAggregateArchiveRequest, StoredEventRecord,
 };
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
@@ -111,6 +111,14 @@ pub struct CreateAggregateOptions {
   pub payload: Option<serde_json::Value>,
   pub metadata: Option<serde_json::Value>,
   pub note: Option<String>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+#[napi(object)]
+pub struct SetArchiveOptions {
+  pub token: Option<String>,
+  pub comment: Option<String>,
 }
 
 #[napi]
@@ -369,6 +377,66 @@ impl DbxClient {
       .map_err(control_err_to_napi)?;
 
     Ok(aggregate_to_json(aggregate))
+  }
+
+  async fn set_archive_state(
+    &self,
+    aggregate_type: String,
+    aggregate_id: String,
+    archived: bool,
+    options: Option<SetArchiveOptions>,
+  ) -> napi::Result<serde_json::Value> {
+    let mut guard = self.state.lock().await;
+    let client = guard
+      .client
+      .as_mut()
+      .ok_or_else(|| napi_err(Status::GenericFailure, "client is not connected"))?;
+    let opts = options.unwrap_or_default();
+    let SetArchiveOptions { token, comment } = opts;
+    let token = token
+      .or_else(|| self.config.token.clone())
+      .unwrap_or_default();
+
+    let request = SetAggregateArchiveRequest {
+      token,
+      aggregate_type,
+      aggregate_id,
+      archived,
+      comment,
+    };
+
+    let aggregate = client
+      .set_aggregate_archive(request)
+      .await
+      .map_err(control_err_to_napi)?;
+
+    Ok(aggregate_to_json(aggregate))
+  }
+
+  /// Archive an aggregate.
+  #[napi(js_name = "archive")]
+  pub async fn archive_aggregate(
+    &self,
+    aggregate_type: String,
+    aggregate_id: String,
+    options: Option<SetArchiveOptions>,
+  ) -> napi::Result<serde_json::Value> {
+    self
+      .set_archive_state(aggregate_type, aggregate_id, true, options)
+      .await
+  }
+
+  /// Restore an archived aggregate.
+  #[napi(js_name = "restore")]
+  pub async fn restore_aggregate(
+    &self,
+    aggregate_type: String,
+    aggregate_id: String,
+    options: Option<SetArchiveOptions>,
+  ) -> napi::Result<serde_json::Value> {
+    self
+      .set_archive_state(aggregate_type, aggregate_id, false, options)
+      .await
   }
 
   /// Apply a JSON Patch to the aggregate. Returns the updated snapshot.

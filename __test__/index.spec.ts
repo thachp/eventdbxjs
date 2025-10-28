@@ -113,8 +113,10 @@ test('client exposes expected API surface', (t) => {
   t.is(typeof client.get, 'function')
   t.is(typeof client.select, 'function')
   t.is(typeof client.events, 'function')
+  t.is(typeof client.apply, 'function')
   t.is(typeof client.create, 'function')
-  t.is(typeof client.createAggregate, 'function')
+  t.is(typeof client.archive, 'function')
+  t.is(typeof client.restore, 'function')
   t.is(typeof client.patch, 'function')
   t.deepEqual(client.endpoint, { ip: baseOptions.ip, port: baseOptions.port })
 })
@@ -169,6 +171,8 @@ const runMockedControlOperations = async (t: ExecutionContext) => {
   const created = { ...events[0], version: 8, eventType: 'Updated' }
   const patched = { ...aggregate, version: 8 }
   const createdAggregate = { ...aggregate, aggregateId: 'p-002', version: 1 }
+  const archivedAggregate = { ...aggregate, archived: true }
+  const restoredAggregate = { ...aggregate, archived: false }
 
   const client = buildClient()
 
@@ -208,7 +212,7 @@ const runMockedControlOperations = async (t: ExecutionContext) => {
   })
   overrideMethod(
     client,
-    'create',
+    'apply',
     async (
       aggregateType: string,
       aggregateId: string,
@@ -224,7 +228,7 @@ const runMockedControlOperations = async (t: ExecutionContext) => {
   )
   overrideMethod(
     client,
-    'createAggregate',
+    'create',
     async (
       aggregateType: string,
       aggregateId: string,
@@ -240,6 +244,34 @@ const runMockedControlOperations = async (t: ExecutionContext) => {
         note: 'created via test',
       })
       return createdAggregate
+    },
+  )
+  overrideMethod(
+    client,
+    'archive',
+    async (
+      aggregateType: string,
+      aggregateId: string,
+      options: { token: string; comment: string },
+    ) => {
+      t.is(aggregateType, 'person')
+      t.is(aggregateId, 'p-001')
+      t.deepEqual(options, { token: 'custom-token', comment: 'archive note' })
+      return archivedAggregate
+    },
+  )
+  overrideMethod(
+    client,
+    'restore',
+    async (
+      aggregateType: string,
+      aggregateId: string,
+      options: { token: string; comment: string },
+    ) => {
+      t.is(aggregateType, 'person')
+      t.is(aggregateId, 'p-001')
+      t.deepEqual(options, { token: 'custom-token', comment: 'restore note' })
+      return restoredAggregate
     },
   )
   overrideMethod(
@@ -269,7 +301,7 @@ const runMockedControlOperations = async (t: ExecutionContext) => {
   t.deepEqual(await client.select('person', 'p-001', ['state.name']), selection)
   t.deepEqual(await client.events('person', 'p-001', { take: 5, skip: 0 }), events)
   t.deepEqual(
-    await client.create('person', 'p-001', 'Updated', {
+    await client.apply('person', 'p-001', 'Updated', {
       payload: { name: 'Jane Doe' },
       token: 'custom-token',
       requireExisting: true,
@@ -277,12 +309,26 @@ const runMockedControlOperations = async (t: ExecutionContext) => {
     created,
   )
   t.deepEqual(
-    await client.createAggregate('person', 'p-002', 'PersonCreated', {
+    await client.create('person', 'p-002', 'PersonCreated', {
       token: 'custom-token',
       payload: { name: 'Jane Doe' },
       note: 'created via test',
     }),
     createdAggregate,
+  )
+  t.deepEqual(
+    await client.archive('person', 'p-001', {
+      token: 'custom-token',
+      comment: 'archive note',
+    }),
+    archivedAggregate,
+  )
+  t.deepEqual(
+    await client.restore('person', 'p-001', {
+      token: 'custom-token',
+      comment: 'restore note',
+    }),
+    restoredAggregate,
   )
   t.deepEqual(
     await client.patch(
@@ -314,18 +360,32 @@ const runLiveControlOperations = async (t: ExecutionContext) => {
       ['select', () => client.select('__test__', '__test__', ['state'])],
       ['events', () => client.events('__test__', '__test__', { skip: 0, take: 1 })],
       [
-        'create',
+        'apply',
         () =>
-          client.create('__test__', '__test__', 'TestEvent', {
+          client.apply('__test__', '__test__', 'TestEvent', {
             payload: { ping: 'pong' },
             token: 'invalid-integration-token',
             requireExisting: false,
           }),
       ],
       [
-        'createAggregate',
+        'create',
         () =>
-          client.createAggregate('__test__', '__test__', 'IntegrationCreated', {
+          client.create('__test__', '__test__', 'IntegrationCreated', {
+            token: 'invalid-integration-token',
+          }),
+      ],
+      [
+        'archive',
+        () =>
+          client.archive('__test__', '__test__', {
+            token: 'invalid-integration-token',
+          }),
+      ],
+      [
+        'restore',
+        () =>
+          client.restore('__test__', '__test__', {
             token: 'invalid-integration-token',
           }),
       ],
@@ -373,8 +433,10 @@ test('control operations require an active connection', async (t) => {
     ['get', () => client.get('person', 'p-001')],
     ['select', () => client.select('person', 'p-001', ['state.name'])],
     ['events', () => client.events('person', 'p-001')],
-    ['create', () => client.create('person', 'p-001', 'TestEvent', undefined)],
-    ['createAggregate', () => client.createAggregate('person', 'p-001', 'CreateAggregate')],
+    ['apply', () => client.apply('person', 'p-001', 'TestEvent', undefined)],
+    ['create', () => client.create('person', 'p-001', 'CreateAggregate')],
+    ['archive', () => client.archive('person', 'p-001', undefined)],
+    ['restore', () => client.restore('person', 'p-001', undefined)],
     ['patch', () => client.patch('person', 'p-001', 'PatchEvent', [{ op: 'replace', path: '/name', value: 'Alice' }])],
   ]
 

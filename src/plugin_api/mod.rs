@@ -114,6 +114,17 @@ pub struct CreateAggregateRequest {
   pub note: Option<String>,
 }
 
+/// Request payload for toggling an aggregate's archived state.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct SetAggregateArchiveRequest {
+  pub token: String,
+  pub aggregate_type: String,
+  pub aggregate_id: String,
+  pub archived: bool,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub comment: Option<String>,
+}
+
 /// Request payload for issuing a JSON Patch against an aggregate.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct PatchEventRequest {
@@ -461,6 +472,54 @@ impl ControlClient {
           }
           _ => Err(ControlClientError::Protocol(
             "unexpected response to createAggregate".into(),
+          )),
+        }
+      })
+      .await
+  }
+
+  /// Toggle an aggregate's archived status.
+  pub async fn set_aggregate_archive(
+    &mut self,
+    request: SetAggregateArchiveRequest,
+  ) -> ControlResult<AggregateStateView> {
+    let request_id = self.next_request_id();
+    let mut message = Builder::new_default();
+    {
+      let mut cap_request = message.init_root::<control_capnp::control_request::Builder>();
+      cap_request.set_id(request_id);
+      let payload = cap_request.reborrow().init_payload();
+      let mut body = payload.init_set_aggregate_archive();
+      body.set_token(request.token.as_str().into());
+      body.set_aggregate_type(request.aggregate_type.as_str().into());
+      body.set_aggregate_id(request.aggregate_id.as_str().into());
+      body.set_archived(request.archived);
+      if let Some(comment) = request.comment.as_ref() {
+        body.set_has_comment(true);
+        body.set_comment(comment.as_str().into());
+      } else {
+        body.set_has_comment(false);
+        body.set_comment("".into());
+      }
+    }
+
+    self
+      .send_and_parse(message, request_id, |response| {
+        match response.get_payload().which().map_err(|_| {
+          ControlClientError::Protocol("unexpected response payload for setAggregateArchive".into())
+        })? {
+          control_capnp::control_response::payload::SetAggregateArchive(resp) => {
+            let resp = resp.map_err(ControlClientError::Capnp)?;
+            let json = read_text_field(resp.get_aggregate_json(), "aggregate_json")?;
+            let aggregate = serde_json::from_str::<AggregateStateView>(&json)?;
+            Ok(aggregate)
+          }
+          control_capnp::control_response::payload::Error(err) => {
+            let err = err.map_err(ControlClientError::Capnp)?;
+            Err(server_error(err))
+          }
+          _ => Err(ControlClientError::Protocol(
+            "unexpected response to setAggregateArchive".into(),
           )),
         }
       })

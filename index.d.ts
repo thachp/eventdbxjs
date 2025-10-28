@@ -22,6 +22,10 @@ export declare class DbxClient {
   apply(aggregateType: string, aggregateId: string, eventType: string, options?: AppendOptions | undefined | null): Promise<any>
   /** Create an aggregate and emit its initial event. */
   create(aggregateType: string, aggregateId: string, eventType: string, options?: CreateAggregateOptions | undefined | null): Promise<any>
+  /** Archive an aggregate. */
+  archive(aggregateType: string, aggregateId: string, options?: SetArchiveOptions | undefined | null): Promise<any>
+  /** Restore an archived aggregate. */
+  restore(aggregateType: string, aggregateId: string, options?: SetArchiveOptions | undefined | null): Promise<any>
   /** Apply a JSON Patch to the aggregate. Returns the updated snapshot. */
   patch(aggregateType: string, aggregateId: string, eventType: string, operations: Array<any>, options?: PatchOptions | undefined | null): Promise<any>
 }
@@ -65,4 +69,9 @@ export interface PatchOptions {
   metadata?: any
   note?: string
   token?: string
+}
+
+export interface SetArchiveOptions {
+  token?: string
+  comment?: string
 }
