@@ -29,19 +29,19 @@ where
   R: AsyncRead + Unpin,
   W: AsyncWrite + Unpin,
 {
-  let params: NoiseParams = NOISE_PROTOCOL_NAME
-    .parse()
-    .map_err(|err| ControlClientError::Protocol(format!("failed to parse Noise protocol: {err}")))?;
+  let params: NoiseParams = NOISE_PROTOCOL_NAME.parse().map_err(|err| {
+    ControlClientError::Protocol(format!("failed to parse Noise protocol: {err}"))
+  })?;
   let psk = derive_psk(token);
   let builder = snow::Builder::new(params).psk(0, &psk);
-  let mut state = builder
-    .build_initiator()
-    .map_err(|err| ControlClientError::Protocol(format!("failed to build Noise initiator: {err}")))?;
+  let mut state = builder.build_initiator().map_err(|err| {
+    ControlClientError::Protocol(format!("failed to build Noise initiator: {err}"))
+  })?;
 
   let mut buffer = vec![0u8; HANDSHAKE_MESSAGE_MAX];
-  let len = state
-    .write_message(&[], &mut buffer)
-    .map_err(|err| ControlClientError::Protocol(format!("failed to write Noise handshake: {err}")))?;
+  let len = state.write_message(&[], &mut buffer).map_err(|err| {
+    ControlClientError::Protocol(format!("failed to write Noise handshake: {err}"))
+  })?;
   send_frame(writer, &buffer[..len]).await?;
   writer.flush().await?; // Io errors bubble up
 
@@ -53,12 +53,12 @@ where
       ))
     }
   };
-  state
-    .read_message(&frame, &mut [])
-    .map_err(|err| ControlClientError::Protocol(format!("failed to read Noise handshake: {err}")))?;
-  state
-    .into_transport_mode()
-    .map_err(|err| ControlClientError::Protocol(format!("failed to initialize Noise transport: {err}")))
+  state.read_message(&frame, &mut []).map_err(|err| {
+    ControlClientError::Protocol(format!("failed to read Noise handshake: {err}"))
+  })?;
+  state.into_transport_mode().map_err(|err| {
+    ControlClientError::Protocol(format!("failed to initialize Noise transport: {err}"))
+  })
 }
 
 pub async fn write_encrypted_frame<W>(
