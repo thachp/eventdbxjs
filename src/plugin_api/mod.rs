@@ -164,45 +164,6 @@ impl FromStr for AggregateSortFieldSpec {
   }
 }
 
-/// JSON-friendly representation of the filter expression union.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "camelCase")]
-pub enum FilterExpressionSpec {
-  And {
-    expressions: Vec<FilterExpressionSpec>,
-  },
-  Or {
-    expressions: Vec<FilterExpressionSpec>,
-  },
-  Not {
-    expression: Box<FilterExpressionSpec>,
-  },
-  Equals {
-    field: String,
-    value: String,
-  },
-  NotEquals {
-    field: String,
-    value: String,
-  },
-  GreaterThan {
-    field: String,
-    value: String,
-  },
-  LessThan {
-    field: String,
-    value: String,
-  },
-  InSet {
-    field: String,
-    values: Vec<String>,
-  },
-  Like {
-    field: String,
-    value: String,
-  },
-}
-
 /// Request payload for issuing a JSON Patch against an aggregate.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct PatchEventRequest {
@@ -296,7 +257,7 @@ impl ControlClient {
     take: Option<usize>,
     include_archived: bool,
     archived_only: bool,
-    filter: Option<&FilterExpressionSpec>,
+    filter: Option<&str>,
     sort: &[AggregateSortSpec],
   ) -> ControlResult<Vec<AggregateStateView>> {
     let skip_u64 = u64::try_from(skip)
@@ -329,8 +290,7 @@ impl ControlClient {
       body.set_token(token.into());
       if let Some(filter) = filter {
         body.set_has_filter(true);
-        let filter_json = serde_json::to_string(filter)?;
-        body.set_filter(filter_json.as_str().into());
+        body.set_filter(filter.into());
       } else {
         body.set_has_filter(false);
         body.set_filter("".into());
@@ -425,7 +385,7 @@ impl ControlClient {
     aggregate_id: &str,
     skip: usize,
     take: Option<usize>,
-    filter: Option<&FilterExpressionSpec>,
+    filter: Option<&str>,
   ) -> ControlResult<Vec<StoredEventRecord>> {
     let skip_u64 = u64::try_from(skip)
       .map_err(|_| ControlClientError::Protocol("skip exceeds u64 range".into()))?;
@@ -457,8 +417,7 @@ impl ControlClient {
       }
       if let Some(filter) = filter {
         body.set_has_filter(true);
-        let filter_json = serde_json::to_string(filter)?;
-        body.set_filter(filter_json.as_str().into());
+        body.set_filter(filter.into());
       } else {
         body.set_has_filter(false);
         body.set_filter("".into());

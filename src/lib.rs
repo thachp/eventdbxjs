@@ -12,8 +12,8 @@ pub mod plugin_api;
 
 use crate::plugin_api::{
   AggregateSortFieldSpec, AggregateSortSpec, AggregateStateView, AppendEventRequest, ControlClient,
-  ControlClientError, CreateAggregateRequest, FilterExpressionSpec, PatchEventRequest,
-  SetAggregateArchiveRequest, StoredEventRecord,
+  ControlClientError, CreateAggregateRequest, PatchEventRequest, SetAggregateArchiveRequest,
+  StoredEventRecord,
 };
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
@@ -94,7 +94,7 @@ pub struct PageOptions {
   pub include_archived: Option<bool>,
   pub archived_only: Option<bool>,
   pub token: Option<String>,
-  pub filter: Option<JsonValue>,
+  pub filter: Option<String>,
   pub sort: Option<Vec<AggregateSortInput>>,
 }
 
@@ -232,17 +232,11 @@ impl DbxClient {
       .and_then(|o| o.include_archived)
       .unwrap_or(false)
       || archived_only;
-    let filter_spec = options
+    let filter = options
       .as_ref()
       .and_then(|o| o.filter.as_ref())
-      .map(|value| serde_json::from_value::<FilterExpressionSpec>(value.clone()))
-      .transpose()
-      .map_err(|err| {
-        napi_err(
-          Status::InvalidArg,
-          format!("invalid filter expression: {err}"),
-        )
-      })?;
+      .map(|value| value.trim().to_owned())
+      .filter(|value| !value.is_empty());
     let sort_specs = options
       .as_ref()
       .and_then(|o| o.sort.as_ref())
@@ -277,7 +271,7 @@ impl DbxClient {
         take,
         include_archived,
         archived_only,
-        filter_spec.as_ref(),
+        filter.as_deref(),
         sort_specs.as_slice(),
       )
       .await
@@ -355,17 +349,11 @@ impl DbxClient {
       .ok_or_else(|| napi_err(Status::GenericFailure, "client is not connected"))?;
     let skip = options.as_ref().and_then(|o| o.skip).unwrap_or(0) as usize;
     let take = options.as_ref().and_then(|o| o.take.map(|v| v as usize));
-    let filter_spec = options
+    let filter = options
       .as_ref()
       .and_then(|o| o.filter.as_ref())
-      .map(|value| serde_json::from_value::<FilterExpressionSpec>(value.clone()))
-      .transpose()
-      .map_err(|err| {
-        napi_err(
-          Status::InvalidArg,
-          format!("invalid filter expression: {err}"),
-        )
-      })?;
+      .map(|value| value.trim().to_owned())
+      .filter(|value| !value.is_empty());
     let token = options
       .as_ref()
       .and_then(|o| o.token.clone())
@@ -379,7 +367,7 @@ impl DbxClient {
         &aggregate_id,
         skip,
         take,
-        filter_spec.as_ref(),
+        filter.as_deref(),
       )
       .await
       .map_err(control_err_to_napi)?;
@@ -692,6 +680,53 @@ mod tests {
   use super::*;
   use chrono::Utc;
   use std::collections::BTreeMap;
+  use std::sync::Mutex;
+
+  static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+  fn with_clean_verbose_env<T, F: FnOnce() -> T>(f: F) -> T {
+    let _guard = ENV_LOCK.lock().expect("env lock poisoned");
+    let previous = std::env::var("EVENTDBX_VERBOSE").ok();
+    std::env::remove_var("EVENTDBX_VERBOSE");
+    let result = f();
+    match previous {
+      Some(value) => std::env::set_var("EVENTDBX_VERBOSE", value),
+      None => std::env::remove_var("EVENTDBX_VERBOSE"),
+    }
+    result
+  }
+
+  #[test]
+  fn client_options_respects_verbose_true() {
+    with_clean_verbose_env(|| {
+      let options = ClientOptions {
+        ip: None,
+        port: None,
+        token: None,
+        verbose: Some(true),
+      };
+      let config: ClientConfig = options.into();
+      assert!(config.verbose, "expected verbose flag to propagate");
+    });
+  }
+
+  #[test]
+  fn client_options_respects_verbose_false() {
+    with_clean_verbose_env(|| {
+      std::env::set_var("EVENTDBX_VERBOSE", "1");
+      let options = ClientOptions {
+        ip: None,
+        port: None,
+        token: None,
+        verbose: Some(false),
+      };
+      let config: ClientConfig = options.into();
+      assert!(
+        !config.verbose,
+        "explicit false should override environment default"
+      );
+    });
+  }
 
   fn sample_aggregate() -> AggregateStateView {
     AggregateStateView {

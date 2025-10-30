@@ -58,37 +58,44 @@ async function main() {
     ip: process.env.EVENTDBX_HOST,
     port: Number(process.env.EVENTDBX_PORT) || 6363,
     token: process.env.EVENTDBX_TOKEN,
+    verbose: false, // set true or false for mutate response, this should match verbose_responses = false on the server config file
   })
 
   await client.connect()
 
   try {
+    // get a list of people, also support filtering if needed
     const aggregates = await client.list('person', { take: 20 })
     console.log(
       'known people:',
       aggregates.map((agg) => agg.aggregateId),
     )
 
+    // create an aggregate
     const snapshot = await client.create('person', 'p-110', 'person_registered', {
       payload: { name: 'Jane Doe', status: 'active' },
-      metadata: { source: 'seed-script' },
+      metadata: { '@source': 'seed-script' },
       note: 'seed aggregate',
     })
     console.log('created aggregate version', snapshot.version)
 
+    // apply an event
     await client.apply('person', 'p-110', 'person_contact_added', {
       payload: { name: 'Jane Doe', status: 'active' },
       metadata: { note: 'seed data' },
     })
 
+    // patch an event, it is like apply but allow you to use json+patch operation
     await client.patch('person', 'p-110', 'person_status_updated', [
       { op: 'replace', path: '/status', value: 'inactive' },
     ])
 
+    // archive a person, moving an aggregate from active index to archived
     await client.archive('person', 'p-110', {
       comment: 'cleanup test data',
     })
 
+    // return a list of events of a p-110
     const history = await client.events('person', 'p-110')
     console.log('event count:', history.length)
   } finally {
@@ -116,7 +123,7 @@ main().catch((err) => {
 | `client.apply(aggregateType, aggregateId, eventType, options?)`             | Append an event with JSON payload/metadata and return the stored event.                    |
 | `client.create(aggregateType, aggregateId, eventType, options?)`            | Create an aggregate with an initial event payload and return the resulting snapshot.       |
 | `client.archive(aggregateType, aggregateId, options?)`                      | Mark an aggregate as archived and return the updated snapshot.                             |
-| `client.restore(aggregateType, aggregateId, options?)`                      | Restore an archived aggregate and return the updated snapshot.                              |
+| `client.restore(aggregateType, aggregateId, options?)`                      | Restore an archived aggregate and return the updated snapshot.                             |
 | `client.patch(aggregateType, aggregateId, eventType, operations, options?)` | Apply an RFC 6902 JSON Patch and return the updated aggregate snapshot.                    |
 | `client.select(aggregateType, aggregateId, fields)`                         | Resolve with a JSON object containing only the requested fields when the aggregate exists. |
 
@@ -157,6 +164,7 @@ interface ClientOptions {
   ip?: string
   port?: number
   token?: string
+  verbose?: boolean
 }
 
 interface PageOptions {
@@ -165,7 +173,7 @@ interface PageOptions {
   includeArchived?: boolean
   archivedOnly?: boolean
   token?: string
-  filter?: FilterExpression
+  filter?: string
   sort?: AggregateSort[]
 }
 
@@ -193,17 +201,6 @@ interface PatchOptions {
   note?: string
   token?: string
 }
-
-type FilterExpression =
-  | { type: 'and'; expressions: FilterExpression[] }
-  | { type: 'or'; expressions: FilterExpression[] }
-  | { type: 'not'; expression: FilterExpression }
-  | { type: 'equals'; field: string; value: string }
-  | { type: 'notEquals'; field: string; value: string }
-  | { type: 'greaterThan'; field: string; value: string }
-  | { type: 'lessThan'; field: string; value: string }
-  | { type: 'like'; field: string; value: string }
-  | { type: 'inSet'; field: string; values: string[] }
 
 interface AggregateSort {
   field: 'aggregateType' | 'aggregateId' | 'version' | 'merkleRoot' | 'archived'
@@ -263,16 +260,8 @@ class DbxClient {
     eventType: string,
     opts?: CreateAggregateOptions,
   ): Promise<any>
-  archive<TState = Json>(
-    aggregateType: string,
-    aggregateId: string,
-    opts?: SetArchiveOptions,
-  ): Promise<any>
-  restore<TState = Json>(
-    aggregateType: string,
-    aggregateId: string,
-    opts?: SetArchiveOptions,
-  ): Promise<any>
+  archive<TState = Json>(aggregateType: string, aggregateId: string, opts?: SetArchiveOptions): Promise<any>
+  restore<TState = Json>(aggregateType: string, aggregateId: string, opts?: SetArchiveOptions): Promise<any>
   patch<TState = Json>(
     aggregateType: string,
     aggregateId: string,
@@ -285,6 +274,8 @@ class DbxClient {
 
 declare function createClient(options?: ClientOptions): DbxClient
 ```
+
+Filters use the same shorthand syntax understood by the EventDBX server: SQL-lite comparisons joined by `AND`/`OR`, optional `NOT`, and support for `=`, `!=`, `>`, `<`, `LIKE`, and `IN [...]`. Example strings include `status = "active"`, `score > 40 AND archived = false`, or `(owner.group = "ops" OR owner.group = "support") AND NOT archived = true`.
 
 > The generated TypeScript declarations currently expose `any` for JSON payloads and snapshots; the runtime values still follow the `Aggregate`/`Event` shapes shown above.
 

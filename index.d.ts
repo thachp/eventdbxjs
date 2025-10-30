@@ -69,7 +69,7 @@ export interface PageOptions {
   includeArchived?: boolean
   archivedOnly?: boolean
   token?: string
-  filter?: JsonValue
+  filter?: string
   sort?: Array<AggregateSortInput>
 }
 
