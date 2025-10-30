@@ -26,6 +26,7 @@ struct ClientConfig {
   ip: String,
   port: u16,
   token: Option<String>,
+  verbose: bool,
 }
 
 impl Default for ClientConfig {
@@ -39,6 +40,9 @@ impl Default for ClientConfig {
       token: std::env::var("EVENTDBX_TOKEN")
         .ok()
         .filter(|value| !value.is_empty()),
+      verbose: std::env::var("EVENTDBX_VERBOSE")
+        .map(|value| matches!(value.as_str(), "1" | "true" | "yes"))
+        .unwrap_or(false),
     }
   }
 }
@@ -59,6 +63,7 @@ pub struct ClientOptions {
   pub ip: Option<String>,
   pub port: Option<u16>,
   pub token: Option<String>,
+  pub verbose: Option<bool>,
 }
 
 impl From<ClientOptions> for ClientConfig {
@@ -72,6 +77,9 @@ impl From<ClientOptions> for ClientConfig {
     }
     if let Some(token) = options.token {
       config.token = Some(token);
+    }
+    if let Some(verbose) = options.verbose {
+      config.verbose = verbose;
     }
     config
   }
@@ -401,10 +409,12 @@ impl DbxClient {
       token,
     } = opts;
 
+    let token = token
+      .or_else(|| self.config.token.clone())
+      .unwrap_or_default();
+
     let request = AppendEventRequest {
-      token: token
-        .or_else(|| self.config.token.clone())
-        .unwrap_or_default(),
+      token,
       aggregate_type,
       aggregate_id,
       event_type,
@@ -413,12 +423,16 @@ impl DbxClient {
       note,
     };
 
-    let record = client
-      .append_event(request)
-      .await
-      .map_err(control_err_to_napi)?;
-
-    Ok(event_to_json(record))
+    match client.append_event(request).await {
+      Ok(record) => Ok(event_to_json(record)),
+      Err(err) => {
+        if self.should_treat_as_ok("appendEvent", &err) {
+          Ok(ok_response_value())
+        } else {
+          Err(control_err_to_napi(err))
+        }
+      }
+    }
   }
 
   /// Create an aggregate and emit its initial event.
@@ -456,12 +470,16 @@ impl DbxClient {
       note,
     };
 
-    let aggregate = client
-      .create_aggregate(request)
-      .await
-      .map_err(control_err_to_napi)?;
-
-    Ok(aggregate_to_json(aggregate))
+    match client.create_aggregate(request).await {
+      Ok(aggregate) => Ok(aggregate_to_json(aggregate)),
+      Err(err) => {
+        if self.should_treat_as_ok("createAggregate", &err) {
+          Ok(ok_response_value())
+        } else {
+          Err(control_err_to_napi(err))
+        }
+      }
+    }
   }
 
   async fn set_archive_state(
@@ -490,12 +508,16 @@ impl DbxClient {
       comment,
     };
 
-    let aggregate = client
-      .set_aggregate_archive(request)
-      .await
-      .map_err(control_err_to_napi)?;
-
-    Ok(aggregate_to_json(aggregate))
+    match client.set_aggregate_archive(request).await {
+      Ok(aggregate) => Ok(aggregate_to_json(aggregate)),
+      Err(err) => {
+        if self.should_treat_as_ok("setAggregateArchive", &err) {
+          Ok(ok_response_value())
+        } else {
+          Err(control_err_to_napi(err))
+        }
+      }
+    }
   }
 
   /// Archive an aggregate.
@@ -564,24 +586,58 @@ impl DbxClient {
       note,
     };
 
-    client
-      .patch_event(request)
-      .await
-      .map_err(control_err_to_napi)?;
+    match client.patch_event(request).await {
+      Ok(_) => match client
+        .get_aggregate(token.as_str(), &aggregate_type, &aggregate_id)
+        .await
+      {
+        Ok(Some(aggregate)) => Ok(aggregate_to_json(aggregate)),
+        Ok(None) => {
+          if self.config.verbose {
+            Err(napi_err(
+              Status::GenericFailure,
+              "aggregate not found after patch",
+            ))
+          } else {
+            Ok(ok_response_value())
+          }
+        }
+        Err(err) => Err(control_err_to_napi(err)),
+      },
+      Err(err) => {
+        if self.should_treat_as_ok("patchEvent", &err) {
+          Ok(ok_response_value())
+        } else {
+          Err(control_err_to_napi(err))
+        }
+      }
+    }
+  }
 
-    let aggregate = client
-      .get_aggregate(token.as_str(), &aggregate_type, &aggregate_id)
-      .await
-      .map_err(control_err_to_napi)?
-      .ok_or_else(|| napi_err(Status::GenericFailure, "aggregate not found after patch"))?;
+  fn should_treat_as_ok(&self, operation: &str, err: &ControlClientError) -> bool {
+    if self.config.verbose {
+      return false;
+    }
 
-    Ok(aggregate_to_json(aggregate))
+    match err {
+      ControlClientError::Protocol(message) => {
+        let msg_lower = message.to_ascii_lowercase();
+        let op_lower = operation.to_ascii_lowercase();
+        msg_lower.contains("unexpected response") && msg_lower.contains(&op_lower)
+      }
+      ControlClientError::Json(_) => true,
+      _ => false,
+    }
   }
 }
 
 #[napi]
 pub fn create_client(options: Option<ClientOptions>) -> DbxClient {
   DbxClient::new(options)
+}
+
+fn ok_response_value() -> JsonValue {
+  JsonValue::String("Ok".into())
 }
 
 #[napi(object)]

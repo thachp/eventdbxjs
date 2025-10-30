@@ -1,10 +1,31 @@
-use std::io::ErrorKind;
+use std::io::{Error as IoError, ErrorKind};
 
 use futures::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use sha2::{Digest, Sha256};
 use snow::{params::NoiseParams, TransportState};
 
-use super::ControlClientError;
+#[derive(Debug)]
+pub enum NoiseError {
+  Io(IoError),
+  Protocol(String),
+}
+
+impl From<IoError> for NoiseError {
+  fn from(value: IoError) -> Self {
+    Self::Io(value)
+  }
+}
+
+impl std::fmt::Display for NoiseError {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      NoiseError::Io(err) => write!(f, "io error: {err}"),
+      NoiseError::Protocol(msg) => write!(f, "protocol error: {msg}"),
+    }
+  }
+}
+
+impl std::error::Error for NoiseError {}
 
 const NOISE_PROTOCOL_NAME: &str = "Noise_NNpsk0_25519_ChaChaPoly_SHA256";
 const MAX_FRAME_LEN: usize = 16 * 1024 * 1024;
@@ -24,53 +45,53 @@ pub async fn perform_client_handshake<R, W>(
   reader: &mut R,
   writer: &mut W,
   token: &[u8],
-) -> Result<TransportState, ControlClientError>
+) -> Result<TransportState, NoiseError>
 where
   R: AsyncRead + Unpin,
   W: AsyncWrite + Unpin,
 {
-  let params: NoiseParams = NOISE_PROTOCOL_NAME.parse().map_err(|err| {
-    ControlClientError::Protocol(format!("failed to parse Noise protocol: {err}"))
-  })?;
+  let params: NoiseParams = NOISE_PROTOCOL_NAME
+    .parse()
+    .map_err(|err| NoiseError::Protocol(format!("failed to parse Noise protocol: {err}")))?;
   let psk = derive_psk(token);
   let builder = snow::Builder::new(params).psk(0, &psk);
-  let mut state = builder.build_initiator().map_err(|err| {
-    ControlClientError::Protocol(format!("failed to build Noise initiator: {err}"))
-  })?;
+  let mut state = builder
+    .build_initiator()
+    .map_err(|err| NoiseError::Protocol(format!("failed to build Noise initiator: {err}")))?;
 
   let mut buffer = vec![0u8; HANDSHAKE_MESSAGE_MAX];
-  let len = state.write_message(&[], &mut buffer).map_err(|err| {
-    ControlClientError::Protocol(format!("failed to write Noise handshake: {err}"))
-  })?;
+  let len = state
+    .write_message(&[], &mut buffer)
+    .map_err(|err| NoiseError::Protocol(format!("failed to write Noise handshake: {err}")))?;
   send_frame(writer, &buffer[..len]).await?;
-  writer.flush().await?; // Io errors bubble up
+  writer.flush().await?;
 
   let frame = match read_frame(reader).await? {
     Some(frame) => frame,
     None => {
-      return Err(ControlClientError::Protocol(
+      return Err(NoiseError::Protocol(
         "peer closed connection during Noise handshake".into(),
       ))
     }
   };
-  state.read_message(&frame, &mut []).map_err(|err| {
-    ControlClientError::Protocol(format!("failed to read Noise handshake: {err}"))
-  })?;
-  state.into_transport_mode().map_err(|err| {
-    ControlClientError::Protocol(format!("failed to initialize Noise transport: {err}"))
-  })
+  state
+    .read_message(&frame, &mut [])
+    .map_err(|err| NoiseError::Protocol(format!("failed to read Noise handshake: {err}")))?;
+  state
+    .into_transport_mode()
+    .map_err(|err| NoiseError::Protocol(format!("failed to initialize Noise transport: {err}")))
 }
 
 pub async fn write_encrypted_frame<W>(
   writer: &mut W,
   state: &mut TransportState,
   plaintext: &[u8],
-) -> Result<(), ControlClientError>
+) -> Result<(), NoiseError>
 where
   W: AsyncWrite + Unpin,
 {
   if plaintext.len() > MAX_FRAME_LEN {
-    return Err(ControlClientError::Protocol(format!(
+    return Err(NoiseError::Protocol(format!(
       "plaintext exceeds maximum frame size ({} bytes)",
       MAX_FRAME_LEN
     )));
@@ -79,7 +100,7 @@ where
   let mut buffer = vec![0u8; plaintext.len() + AEAD_TAG_LEN];
   let len = state
     .write_message(plaintext, &mut buffer)
-    .map_err(|err| ControlClientError::Protocol(format!("failed to encrypt Noise frame: {err}")))?;
+    .map_err(|err| NoiseError::Protocol(format!("failed to encrypt Noise frame: {err}")))?;
   send_frame(writer, &buffer[..len]).await?;
   writer.flush().await?;
   Ok(())
@@ -88,7 +109,7 @@ where
 pub async fn read_encrypted_frame<R>(
   reader: &mut R,
   state: &mut TransportState,
-) -> Result<Option<Vec<u8>>, ControlClientError>
+) -> Result<Option<Vec<u8>>, NoiseError>
 where
   R: AsyncRead + Unpin,
 {
@@ -97,7 +118,7 @@ where
     None => return Ok(None),
   };
   if frame.len() > MAX_FRAME_LEN + AEAD_TAG_LEN {
-    return Err(ControlClientError::Protocol(format!(
+    return Err(NoiseError::Protocol(format!(
       "encrypted frame exceeds maximum size ({} bytes)",
       MAX_FRAME_LEN + AEAD_TAG_LEN
     )));
@@ -105,17 +126,17 @@ where
   let mut buffer = vec![0u8; frame.len()];
   let len = state
     .read_message(&frame, &mut buffer)
-    .map_err(|err| ControlClientError::Protocol(format!("failed to decrypt Noise frame: {err}")))?;
+    .map_err(|err| NoiseError::Protocol(format!("failed to decrypt Noise frame: {err}")))?;
   buffer.truncate(len);
   Ok(Some(buffer))
 }
 
-async fn send_frame<W>(writer: &mut W, payload: &[u8]) -> Result<(), ControlClientError>
+async fn send_frame<W>(writer: &mut W, payload: &[u8]) -> Result<(), NoiseError>
 where
   W: AsyncWrite + Unpin,
 {
   if payload.len() > u32::MAX as usize {
-    return Err(ControlClientError::Protocol(
+    return Err(NoiseError::Protocol(
       "frame payload exceeds u32 length".into(),
     ));
   }
@@ -126,7 +147,7 @@ where
   Ok(())
 }
 
-async fn read_frame<R>(reader: &mut R) -> Result<Option<Vec<u8>>, ControlClientError>
+async fn read_frame<R>(reader: &mut R) -> Result<Option<Vec<u8>>, NoiseError>
 where
   R: AsyncRead + Unpin,
 {
@@ -134,11 +155,11 @@ where
   match reader.read_exact(&mut header).await {
     Ok(()) => {}
     Err(err) if err.kind() == ErrorKind::UnexpectedEof => return Ok(None),
-    Err(err) => return Err(ControlClientError::Io(err)),
+    Err(err) => return Err(NoiseError::Io(err)),
   }
   let len = u32::from_be_bytes(header) as usize;
   if len > MAX_FRAME_LEN + AEAD_TAG_LEN {
-    return Err(ControlClientError::Protocol(format!(
+    return Err(NoiseError::Protocol(format!(
       "frame length {} exceeds maximum {}",
       len,
       MAX_FRAME_LEN + AEAD_TAG_LEN
@@ -149,7 +170,7 @@ where
     match reader.read_exact(&mut payload).await {
       Ok(()) => {}
       Err(err) if err.kind() == ErrorKind::UnexpectedEof => return Ok(None),
-      Err(err) => return Err(ControlClientError::Io(err)),
+      Err(err) => return Err(NoiseError::Io(err)),
     }
   }
   Ok(Some(payload))

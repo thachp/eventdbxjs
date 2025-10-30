@@ -1,5 +1,5 @@
-import test from 'ava'
 import type { ExecutionContext } from 'ava'
+import test from 'ava'
 
 import { createClient } from '../index.js'
 
@@ -11,7 +11,8 @@ const runtimeEnv: RuntimeEnv = (globalThis as RuntimeContext).process?.env ?? {}
 const baseOptions = {
   ip: '127.0.0.1',
   port: 6363,
-  token: 'test-token',
+  token:
+    'eyJ0eXAiOiJKV1QiLCJhbGciOiJFZERTQSIsImtpZCI6ImtleS0yMDI1MTAyOTA4NTIxMCJ9.eyJpc3MiOiJldmVudGRieDovL3NlbGYiLCJhdWQiOiJldmVudGRieC1jbGllbnRzIiwic3ViIjoiY2xpOmJvb3RzdHJhcCIsImp0aSI6IjA5NmUyMGYwLWM1ODMtNDlhZi1hOWMwLWI2OWJmOTNhN2E4OSIsImlhdCI6MTc2MTc1ODMyNSwiZ3JvdXAiOiJjbGkiLCJ1c2VyIjoicm9vdCIsImFjdGlvbnMiOlsiKi4qIl0sInJlc291cmNlcyI6WyIqIl0sImlzc3VlZF9ieSI6ImNsaS1ib290c3RyYXAiLCJsaW1pdHMiOnsid3JpdGVfZXZlbnRzIjpudWxsLCJrZWVwX2FsaXZlIjpmYWxzZX19.dtjwTi_HqN4XS0tSoJ_-8OKt6Ids5iGpBPzC9Ti57lBQPTOIrjQ10vWGox0nRpUmpv9ekseT_sBnH65wgrFXAA',
 }
 
 type AsyncCall = () => Promise<unknown>
@@ -211,16 +212,12 @@ const runMockedControlOperations = async (t: ExecutionContext) => {
     t.is(aggregateId, 'p-001')
     return aggregate
   })
-  overrideMethod(
-    client,
-    'select',
-    async (aggregateType: string, aggregateId: string, fields: string[]) => {
-      t.is(aggregateType, 'person')
-      t.is(aggregateId, 'p-001')
-      t.deepEqual(fields, ['state.name'])
-      return selection
-    },
-  )
+  overrideMethod(client, 'select', async (aggregateType: string, aggregateId: string, fields: string[]) => {
+    t.is(aggregateType, 'person')
+    t.is(aggregateId, 'p-001')
+    t.deepEqual(fields, ['state.name'])
+    return selection
+  })
   overrideMethod(
     client,
     'events',
@@ -278,11 +275,7 @@ const runMockedControlOperations = async (t: ExecutionContext) => {
   overrideMethod(
     client,
     'archive',
-    async (
-      aggregateType: string,
-      aggregateId: string,
-      options: { token: string; comment: string },
-    ) => {
+    async (aggregateType: string, aggregateId: string, options: { token: string; comment: string }) => {
       t.is(aggregateType, 'person')
       t.is(aggregateId, 'p-001')
       t.deepEqual(options, { token: 'custom-token', comment: 'archive note' })
@@ -292,11 +285,7 @@ const runMockedControlOperations = async (t: ExecutionContext) => {
   overrideMethod(
     client,
     'restore',
-    async (
-      aggregateType: string,
-      aggregateId: string,
-      options: { token: string; comment: string },
-    ) => {
+    async (aggregateType: string, aggregateId: string, options: { token: string; comment: string }) => {
       t.is(aggregateType, 'person')
       t.is(aggregateId, 'p-001')
       t.deepEqual(options, { token: 'custom-token', comment: 'restore note' })
@@ -374,13 +363,9 @@ const runMockedControlOperations = async (t: ExecutionContext) => {
     restoredAggregate,
   )
   t.deepEqual(
-    await client.patch(
-      'person',
-      'p-001',
-      'PatchEvent',
-      [{ op: 'replace', path: '/name', value: 'Alice' }],
-      { note: 'patch note' },
-    ),
+    await client.patch('person', 'p-001', 'PatchEvent', [{ op: 'replace', path: '/name', value: 'Alice' }], {
+      note: 'patch note',
+    }),
     patched,
   )
 
@@ -434,13 +419,10 @@ const runLiveControlOperations = async (t: ExecutionContext) => {
       [
         'patch',
         () =>
-          client.patch(
-            '__test__',
-            '__test__',
-            'PatchEvent',
-            [{ op: 'replace', path: '/ping', value: 'pong' }],
-            { note: 'integration smoke test', token: 'invalid-integration-token' },
-          ),
+          client.patch('__test__', '__test__', 'PatchEvent', [{ op: 'replace', path: '/ping', value: 'pong' }], {
+            note: 'integration smoke test',
+            token: 'invalid-integration-token',
+          }),
       ],
     ]
 

@@ -12,7 +12,7 @@ use capnp::message::{Builder, ReaderOptions};
 use capnp::serialize::write_message_to_words;
 use chrono::{DateTime, Utc};
 use futures::io::AsyncWriteExt;
-use noise::{perform_client_handshake, read_encrypted_frame, write_encrypted_frame};
+use noise::{perform_client_handshake, read_encrypted_frame, write_encrypted_frame, NoiseError};
 use serde::{Deserialize, Serialize};
 use serde_json::{self, Value as JsonValue};
 use snow::TransportState;
@@ -34,6 +34,7 @@ pub struct AggregateStateView {
   pub version: u64,
   pub state: BTreeMap<String, String>,
   pub merkle_root: String,
+  #[serde(default)]
   pub archived: bool,
 }
 
@@ -870,7 +871,8 @@ impl ControlClient {
   }
 
   async fn write_encrypted_message(&mut self, payload: &[u8]) -> ControlResult<()> {
-    write_encrypted_frame(&mut self.writer, &mut self.noise, payload).await
+    write_encrypted_frame(&mut self.writer, &mut self.noise, payload).await?;
+    Ok(())
   }
 
   async fn read_encrypted_message(&mut self) -> ControlResult<Vec<u8>> {
@@ -880,6 +882,12 @@ impl ControlClient {
         "control connection closed unexpectedly".into(),
       )),
     }
+  }
+}
+
+impl From<NoiseError> for ControlClientError {
+  fn from(err: NoiseError) -> Self {
+    ControlClientError::Protocol(err.to_string())
   }
 }
 
@@ -945,5 +953,7 @@ where
     )));
   }
 
-  perform_client_handshake(reader, writer, token.as_bytes()).await
+  perform_client_handshake(reader, writer, token.as_bytes())
+    .await
+    .map_err(ControlClientError::from)
 }

@@ -51,6 +51,7 @@ export interface ClientOptions {
   ip?: string
   port?: number
   token?: string
+  verbose?: boolean
 }
 
 export interface CreateAggregateOptions {
