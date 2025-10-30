@@ -5,13 +5,15 @@
 //! list aggregates, fetch a single aggregate, enumerate events, append a new
 //! event, or apply a JSON Patch against the current state.
 
+use std::str::FromStr;
 use std::sync::Arc;
 
 pub mod plugin_api;
 
 use crate::plugin_api::{
-  AggregateStateView, AppendEventRequest, ControlClient, ControlClientError,
-  CreateAggregateRequest, PatchEventRequest, SetAggregateArchiveRequest, StoredEventRecord,
+  AggregateSortFieldSpec, AggregateSortSpec, AggregateStateView, AppendEventRequest, ControlClient,
+  ControlClientError, CreateAggregateRequest, FilterExpressionSpec, PatchEventRequest,
+  SetAggregateArchiveRequest, StoredEventRecord,
 };
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
@@ -75,7 +77,7 @@ impl From<ClientOptions> for ClientConfig {
   }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 #[napi(object)]
 pub struct PageOptions {
@@ -83,9 +85,12 @@ pub struct PageOptions {
   pub skip: Option<u32>,
   pub include_archived: Option<bool>,
   pub archived_only: Option<bool>,
+  pub token: Option<String>,
+  pub filter: Option<JsonValue>,
+  pub sort: Option<Vec<AggregateSortInput>>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 #[napi(object)]
 pub struct AppendOptions {
@@ -93,7 +98,6 @@ pub struct AppendOptions {
   pub metadata: Option<serde_json::Value>,
   pub note: Option<String>,
   pub token: Option<String>,
-  pub require_existing: Option<bool>,
 }
 
 #[napi(object)]
@@ -119,6 +123,14 @@ pub struct CreateAggregateOptions {
 pub struct SetArchiveOptions {
   pub token: Option<String>,
   pub comment: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[napi(object)]
+pub struct AggregateSortInput {
+  pub field: String,
+  pub descending: Option<bool>,
 }
 
 #[napi]
@@ -147,7 +159,18 @@ impl DbxClient {
     }
 
     let addr = self.config.endpoint();
-    let client = ControlClient::connect(&addr)
+    let token = self
+      .config
+      .token
+      .clone()
+      .filter(|value| !value.trim().is_empty())
+      .ok_or_else(|| {
+        napi_err(
+          Status::InvalidArg,
+          "control token must be provided via client options or EVENTDBX_TOKEN",
+        )
+      })?;
+    let client = ControlClient::connect(&addr, token.as_str())
       .await
       .map_err(control_err_to_napi)?;
     guard.client = Some(client);
@@ -201,9 +224,54 @@ impl DbxClient {
       .and_then(|o| o.include_archived)
       .unwrap_or(false)
       || archived_only;
+    let filter_spec = options
+      .as_ref()
+      .and_then(|o| o.filter.as_ref())
+      .map(|value| serde_json::from_value::<FilterExpressionSpec>(value.clone()))
+      .transpose()
+      .map_err(|err| {
+        napi_err(
+          Status::InvalidArg,
+          format!("invalid filter expression: {err}"),
+        )
+      })?;
+    let sort_specs = options
+      .as_ref()
+      .and_then(|o| o.sort.as_ref())
+      .map(|entries| {
+        let mut specs = Vec::with_capacity(entries.len());
+        for entry in entries {
+          let field = AggregateSortFieldSpec::from_str(entry.field.as_str()).map_err(|_| {
+            napi_err(
+              Status::InvalidArg,
+              format!("unknown aggregate sort field '{}'", entry.field),
+            )
+          })?;
+          specs.push(AggregateSortSpec {
+            field,
+            descending: entry.descending.unwrap_or(false),
+          });
+        }
+        Ok::<Vec<AggregateSortSpec>, napi::Error>(specs)
+      })
+      .transpose()?
+      .unwrap_or_default();
+    let token = options
+      .as_ref()
+      .and_then(|o| o.token.clone())
+      .or_else(|| self.config.token.clone())
+      .unwrap_or_default();
 
     let aggregates = client
-      .list_aggregates(skip, take, include_archived, archived_only)
+      .list_aggregates(
+        token.as_str(),
+        skip,
+        take,
+        include_archived,
+        archived_only,
+        filter_spec.as_ref(),
+        sort_specs.as_slice(),
+      )
       .await
       .map_err(control_err_to_napi)?;
 
@@ -232,8 +300,9 @@ impl DbxClient {
       .client
       .as_mut()
       .ok_or_else(|| napi_err(Status::GenericFailure, "client is not connected"))?;
+    let token = self.config.token.clone().unwrap_or_default();
     let aggregate = client
-      .get_aggregate(&aggregate_type, &aggregate_id)
+      .get_aggregate(token.as_str(), &aggregate_type, &aggregate_id)
       .await
       .map_err(control_err_to_napi)?;
 
@@ -253,9 +322,10 @@ impl DbxClient {
       .client
       .as_mut()
       .ok_or_else(|| napi_err(Status::GenericFailure, "client is not connected"))?;
+    let token = self.config.token.clone().unwrap_or_default();
 
     let selection = client
-      .select_aggregate(&aggregate_type, &aggregate_id, &fields)
+      .select_aggregate(token.as_str(), &aggregate_type, &aggregate_id, &fields)
       .await
       .map_err(control_err_to_napi)?;
 
@@ -277,9 +347,32 @@ impl DbxClient {
       .ok_or_else(|| napi_err(Status::GenericFailure, "client is not connected"))?;
     let skip = options.as_ref().and_then(|o| o.skip).unwrap_or(0) as usize;
     let take = options.as_ref().and_then(|o| o.take.map(|v| v as usize));
+    let filter_spec = options
+      .as_ref()
+      .and_then(|o| o.filter.as_ref())
+      .map(|value| serde_json::from_value::<FilterExpressionSpec>(value.clone()))
+      .transpose()
+      .map_err(|err| {
+        napi_err(
+          Status::InvalidArg,
+          format!("invalid filter expression: {err}"),
+        )
+      })?;
+    let token = options
+      .as_ref()
+      .and_then(|o| o.token.clone())
+      .or_else(|| self.config.token.clone())
+      .unwrap_or_default();
 
     let events = client
-      .list_events(&aggregate_type, &aggregate_id, skip, take)
+      .list_events(
+        token.as_str(),
+        &aggregate_type,
+        &aggregate_id,
+        skip,
+        take,
+        filter_spec.as_ref(),
+      )
       .await
       .map_err(control_err_to_napi)?;
 
@@ -300,19 +393,12 @@ impl DbxClient {
       .client
       .as_mut()
       .ok_or_else(|| napi_err(Status::GenericFailure, "client is not connected"))?;
-    let opts = options.unwrap_or(AppendOptions {
-      payload: None,
-      metadata: None,
-      note: None,
-      token: None,
-      require_existing: None,
-    });
+    let opts = options.unwrap_or_default();
     let AppendOptions {
       payload,
       metadata,
       note,
       token,
-      require_existing,
     } = opts;
 
     let request = AppendEventRequest {
@@ -325,7 +411,6 @@ impl DbxClient {
       payload,
       metadata,
       note,
-      require_existing: require_existing.unwrap_or(false),
     };
 
     let record = client
@@ -459,19 +544,24 @@ impl DbxClient {
       note: None,
       token: None,
     });
+    let PatchOptions {
+      metadata,
+      note,
+      token,
+    } = opts;
+    let token = token
+      .or_else(|| self.config.token.clone())
+      .unwrap_or_default();
 
     let patch = JsonValue::Array(operations);
     let request = PatchEventRequest {
-      token: opts
-        .token
-        .or_else(|| self.config.token.clone())
-        .unwrap_or_default(),
+      token: token.clone(),
       aggregate_type: aggregate_type.clone(),
       aggregate_id: aggregate_id.clone(),
       event_type,
       patch,
-      metadata: opts.metadata,
-      note: opts.note,
+      metadata,
+      note,
     };
 
     client
@@ -480,7 +570,7 @@ impl DbxClient {
       .map_err(control_err_to_napi)?;
 
     let aggregate = client
-      .get_aggregate(&aggregate_type, &aggregate_id)
+      .get_aggregate(token.as_str(), &aggregate_type, &aggregate_id)
       .await
       .map_err(control_err_to_napi)?
       .ok_or_else(|| napi_err(Status::GenericFailure, "aggregate not found after patch"))?;

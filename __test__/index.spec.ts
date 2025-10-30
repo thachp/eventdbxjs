@@ -184,11 +184,28 @@ const runMockedControlOperations = async (t: ExecutionContext) => {
     connected = false
   })
   overrideMethod(client, 'isConnected', async () => connected)
-  overrideMethod(client, 'list', async (aggregateType: string, options: { take: number; skip: number }) => {
-    t.is(aggregateType, 'person')
-    t.deepEqual(options, { take: 10, skip: 2 })
-    return [aggregate]
-  })
+  overrideMethod(
+    client,
+    'list',
+    async (
+      aggregateType: string,
+      options: {
+        take: number
+        skip: number
+        sort: Array<{ field: string; descending: boolean }>
+        filter: { type: 'equals'; field: string; value: string }
+      },
+    ) => {
+      t.is(aggregateType, 'person')
+      t.deepEqual(options, {
+        take: 10,
+        skip: 2,
+        sort: [{ field: 'version', descending: true }],
+        filter: { type: 'equals', field: 'aggregateType', value: 'person' },
+      })
+      return [aggregate]
+    },
+  )
   overrideMethod(client, 'get', async (aggregateType: string, aggregateId: string) => {
     t.is(aggregateType, 'person')
     t.is(aggregateId, 'p-001')
@@ -204,12 +221,24 @@ const runMockedControlOperations = async (t: ExecutionContext) => {
       return selection
     },
   )
-  overrideMethod(client, 'events', async (aggregateType: string, aggregateId: string, options: { take: number; skip: number }) => {
-    t.is(aggregateType, 'person')
-    t.is(aggregateId, 'p-001')
-    t.deepEqual(options, { take: 5, skip: 0 })
-    return events
-  })
+  overrideMethod(
+    client,
+    'events',
+    async (
+      aggregateType: string,
+      aggregateId: string,
+      options: { take: number; skip: number; filter: { type: 'equals'; field: string; value: string } },
+    ) => {
+      t.is(aggregateType, 'person')
+      t.is(aggregateId, 'p-001')
+      t.deepEqual(options, {
+        take: 5,
+        skip: 0,
+        filter: { type: 'equals', field: 'aggregateId', value: 'p-001' },
+      })
+      return events
+    },
+  )
   overrideMethod(
     client,
     'apply',
@@ -217,12 +246,12 @@ const runMockedControlOperations = async (t: ExecutionContext) => {
       aggregateType: string,
       aggregateId: string,
       eventType: string,
-      options: { payload: { name: string }; token: string; requireExisting: boolean },
+      options: { payload: { name: string }; token: string },
     ) => {
       t.is(aggregateType, 'person')
       t.is(aggregateId, 'p-001')
       t.is(eventType, 'Updated')
-      t.deepEqual(options, { payload: { name: 'Jane Doe' }, token: 'custom-token', requireExisting: true })
+      t.deepEqual(options, { payload: { name: 'Jane Doe' }, token: 'custom-token' })
       return created
     },
   )
@@ -296,15 +325,29 @@ const runMockedControlOperations = async (t: ExecutionContext) => {
   await client.connect()
   t.true(await client.isConnected())
 
-  t.deepEqual(await client.list('person', { take: 10, skip: 2 }), [aggregate])
+  t.deepEqual(
+    await client.list('person', {
+      take: 10,
+      skip: 2,
+      sort: [{ field: 'version', descending: true }],
+      filter: { type: 'equals', field: 'aggregateType', value: 'person' },
+    }),
+    [aggregate],
+  )
   t.deepEqual(await client.get('person', 'p-001'), aggregate)
   t.deepEqual(await client.select('person', 'p-001', ['state.name']), selection)
-  t.deepEqual(await client.events('person', 'p-001', { take: 5, skip: 0 }), events)
+  t.deepEqual(
+    await client.events('person', 'p-001', {
+      take: 5,
+      skip: 0,
+      filter: { type: 'equals', field: 'aggregateId', value: 'p-001' },
+    }),
+    events,
+  )
   t.deepEqual(
     await client.apply('person', 'p-001', 'Updated', {
       payload: { name: 'Jane Doe' },
       token: 'custom-token',
-      requireExisting: true,
     }),
     created,
   )
@@ -365,7 +408,6 @@ const runLiveControlOperations = async (t: ExecutionContext) => {
           client.apply('__test__', '__test__', 'TestEvent', {
             payload: { ping: 'pong' },
             token: 'invalid-integration-token',
-            requireExisting: false,
           }),
       ],
       [

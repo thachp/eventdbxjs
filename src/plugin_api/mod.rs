@@ -6,19 +6,24 @@
 pub mod control_capnp {
   include!(concat!(env!("OUT_DIR"), "/control_capnp.rs"));
 }
+mod noise;
 
 use capnp::message::{Builder, ReaderOptions};
 use capnp::serialize::write_message_to_words;
-use capnp_futures::serialize::read_message;
 use chrono::{DateTime, Utc};
 use futures::io::AsyncWriteExt;
+use noise::{perform_client_handshake, read_encrypted_frame, write_encrypted_frame};
 use serde::{Deserialize, Serialize};
 use serde_json::{self, Value as JsonValue};
+use snow::TransportState;
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
+use std::io::Cursor;
+use std::str::FromStr;
 use thiserror::Error;
+use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::TcpStream;
-use tokio_util::compat::{Compat, TokioAsyncReadCompatExt};
+use tokio_util::compat::{Compat, TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
 /// Aggregate snapshot returned by the control socket.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -95,8 +100,6 @@ pub struct AppendEventRequest {
   pub metadata: Option<JsonValue>,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub note: Option<String>,
-  #[serde(default)]
-  pub require_existing: bool,
 }
 
 /// Request payload for creating an aggregate, optionally emitting an initial event.
@@ -123,6 +126,80 @@ pub struct SetAggregateArchiveRequest {
   pub archived: bool,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub comment: Option<String>,
+}
+
+/// Sort specification applied when listing aggregates.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AggregateSortSpec {
+  pub field: AggregateSortFieldSpec,
+  #[serde(default)]
+  pub descending: bool,
+}
+
+/// Available sort fields for aggregates.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum AggregateSortFieldSpec {
+  AggregateType,
+  AggregateId,
+  Version,
+  MerkleRoot,
+  Archived,
+}
+
+impl FromStr for AggregateSortFieldSpec {
+  type Err = ();
+
+  fn from_str(value: &str) -> Result<Self, Self::Err> {
+    match value {
+      "aggregateType" => Ok(Self::AggregateType),
+      "aggregateId" => Ok(Self::AggregateId),
+      "version" => Ok(Self::Version),
+      "merkleRoot" => Ok(Self::MerkleRoot),
+      "archived" => Ok(Self::Archived),
+      _ => Err(()),
+    }
+  }
+}
+
+/// JSON-friendly representation of the filter expression union.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum FilterExpressionSpec {
+  And {
+    expressions: Vec<FilterExpressionSpec>,
+  },
+  Or {
+    expressions: Vec<FilterExpressionSpec>,
+  },
+  Not {
+    expression: Box<FilterExpressionSpec>,
+  },
+  Equals {
+    field: String,
+    value: String,
+  },
+  NotEquals {
+    field: String,
+    value: String,
+  },
+  GreaterThan {
+    field: String,
+    value: String,
+  },
+  LessThan {
+    field: String,
+    value: String,
+  },
+  InSet {
+    field: String,
+    values: Vec<String>,
+  },
+  Like {
+    field: String,
+    value: String,
+  },
 }
 
 /// Request payload for issuing a JSON Patch against an aggregate.
@@ -179,17 +256,33 @@ pub enum ControlClientError {
 pub type ControlResult<T> = Result<T, ControlClientError>;
 
 /// Minimal client for the control socket exposed on port 6363.
+const CONTROL_PROTOCOL_VERSION: u16 = 1;
+
 pub struct ControlClient {
-  stream: Compat<TcpStream>,
+  reader: Compat<OwnedReadHalf>,
+  writer: Compat<OwnedWriteHalf>,
+  noise: TransportState,
   next_id: u64,
 }
 
 impl ControlClient {
   /// Connect to the control socket at `addr` (e.g. `"127.0.0.1:6363"`).
-  pub async fn connect(addr: &str) -> ControlResult<Self> {
+  pub async fn connect(addr: &str, token: &str) -> ControlResult<Self> {
+    let token = token.trim();
+    if token.is_empty() {
+      return Err(ControlClientError::Protocol(
+        "control token is required to establish a connection".into(),
+      ));
+    }
     let stream = TcpStream::connect(addr).await?;
+    let (reader_half, writer_half) = stream.into_split();
+    let mut reader = reader_half.compat();
+    let mut writer = writer_half.compat_write();
+    let noise = send_control_handshake(&mut reader, &mut writer, token).await?;
     Ok(Self {
-      stream: stream.compat(),
+      reader,
+      writer,
+      noise,
       next_id: 1,
     })
   }
@@ -197,10 +290,13 @@ impl ControlClient {
   /// Retrieve a sanitized list of aggregates.
   pub async fn list_aggregates(
     &mut self,
+    token: &str,
     skip: usize,
     take: Option<usize>,
     include_archived: bool,
     archived_only: bool,
+    filter: Option<&FilterExpressionSpec>,
+    sort: &[AggregateSortSpec],
   ) -> ControlResult<Vec<AggregateStateView>> {
     let skip_u64 = u64::try_from(skip)
       .map_err(|_| ControlClientError::Protocol("skip exceeds u64 range".into()))?;
@@ -229,6 +325,26 @@ impl ControlClient {
       }
       body.set_include_archived(include_archived);
       body.set_archived_only(archived_only);
+      body.set_token(token.into());
+      if let Some(filter) = filter {
+        body.set_has_filter(true);
+        let filter_json = serde_json::to_string(filter)?;
+        body.set_filter(filter_json.as_str().into());
+      } else {
+        body.set_has_filter(false);
+        body.set_filter("".into());
+      }
+      if !sort.is_empty() {
+        body.set_has_sort(true);
+        let mut list = body.reborrow().init_sort(sort.len() as u32);
+        for (idx, spec) in sort.iter().enumerate() {
+          let mut entry = list.reborrow().get(idx as u32);
+          entry.set_field(map_sort_field(&spec.field));
+          entry.set_descending(spec.descending);
+        }
+      } else {
+        body.set_has_sort(false);
+      }
     }
 
     self
@@ -257,6 +373,7 @@ impl ControlClient {
   /// Fetch a single aggregate if it exists.
   pub async fn get_aggregate(
     &mut self,
+    token: &str,
     aggregate_type: &str,
     aggregate_id: &str,
   ) -> ControlResult<Option<AggregateStateView>> {
@@ -269,6 +386,7 @@ impl ControlClient {
       let mut body = payload.init_get_aggregate();
       body.set_aggregate_type(aggregate_type.into());
       body.set_aggregate_id(aggregate_id.into());
+      body.set_token(token.into());
     }
 
     self
@@ -301,10 +419,12 @@ impl ControlClient {
   /// List events for a given aggregate.
   pub async fn list_events(
     &mut self,
+    token: &str,
     aggregate_type: &str,
     aggregate_id: &str,
     skip: usize,
     take: Option<usize>,
+    filter: Option<&FilterExpressionSpec>,
   ) -> ControlResult<Vec<StoredEventRecord>> {
     let skip_u64 = u64::try_from(skip)
       .map_err(|_| ControlClientError::Protocol("skip exceeds u64 range".into()))?;
@@ -326,12 +446,21 @@ impl ControlClient {
       body.set_aggregate_type(aggregate_type.into());
       body.set_aggregate_id(aggregate_id.into());
       body.set_skip(skip_u64);
+      body.set_token(token.into());
       if let Some(take) = take_u64 {
         body.set_has_take(true);
         body.set_take(take);
       } else {
         body.set_has_take(false);
         body.set_take(0);
+      }
+      if let Some(filter) = filter {
+        body.set_has_filter(true);
+        let filter_json = serde_json::to_string(filter)?;
+        body.set_filter(filter_json.as_str().into());
+      } else {
+        body.set_has_filter(false);
+        body.set_filter("".into());
       }
     }
 
@@ -361,6 +490,7 @@ impl ControlClient {
   /// Select specific fields from an aggregate snapshot.
   pub async fn select_aggregate(
     &mut self,
+    token: &str,
     aggregate_type: &str,
     aggregate_id: &str,
     fields: &[String],
@@ -377,6 +507,7 @@ impl ControlClient {
       let mut body = payload.init_select_aggregate();
       body.set_aggregate_type(aggregate_type.into());
       body.set_aggregate_id(aggregate_id.into());
+      body.set_token(token.into());
       let mut field_list = body.reborrow().init_fields(field_count);
       for (idx, field) in fields.iter().enumerate() {
         field_list.set(idx as u32, field.as_str().into());
@@ -569,7 +700,6 @@ impl ControlClient {
         body.set_has_note(false);
         body.set_note("".into());
       }
-      body.set_require_existing(request.require_existing);
     }
 
     self
@@ -719,9 +849,11 @@ impl ControlClient {
     F: FnOnce(control_capnp::control_response::Reader<'_>) -> ControlResult<T>,
   {
     let bytes = write_message_to_words(&message);
-    self.stream.write_all(&bytes).await?;
-
-    let response_message = read_message(&mut self.stream, ReaderOptions::new()).await?;
+    self.write_encrypted_message(&bytes).await?;
+    let response_bytes = self.read_encrypted_message().await?;
+    let mut cursor = Cursor::new(&response_bytes);
+    let response_message = capnp::serialize::read_message(&mut cursor, ReaderOptions::new())
+      .map_err(ControlClientError::Capnp)?;
     let response = response_message
       .get_root::<control_capnp::control_response::Reader>()
       .map_err(ControlClientError::Capnp)?;
@@ -735,6 +867,19 @@ impl ControlClient {
     }
 
     parser(response)
+  }
+
+  async fn write_encrypted_message(&mut self, payload: &[u8]) -> ControlResult<()> {
+    write_encrypted_frame(&mut self.writer, &mut self.noise, payload).await
+  }
+
+  async fn read_encrypted_message(&mut self) -> ControlResult<Vec<u8>> {
+    match read_encrypted_frame(&mut self.reader, &mut self.noise).await? {
+      Some(bytes) => Ok(bytes),
+      None => Err(ControlClientError::Protocol(
+        "control connection closed unexpectedly".into(),
+      )),
+    }
   }
 }
 
@@ -754,4 +899,51 @@ fn server_error(reader: control_capnp::control_error::Reader<'_>) -> ControlClie
   let message = read_text_field(reader.get_message(), "error message")
     .unwrap_or_else(|_| "unknown".to_string());
   ControlClientError::Server { code, message }
+}
+
+fn map_sort_field(field: &AggregateSortFieldSpec) -> control_capnp::AggregateSortField {
+  match field {
+    AggregateSortFieldSpec::AggregateType => control_capnp::AggregateSortField::AggregateType,
+    AggregateSortFieldSpec::AggregateId => control_capnp::AggregateSortField::AggregateId,
+    AggregateSortFieldSpec::Version => control_capnp::AggregateSortField::Version,
+    AggregateSortFieldSpec::MerkleRoot => control_capnp::AggregateSortField::MerkleRoot,
+    AggregateSortFieldSpec::Archived => control_capnp::AggregateSortField::Archived,
+  }
+}
+
+async fn send_control_handshake<R, W>(
+  reader: &mut R,
+  writer: &mut W,
+  token: &str,
+) -> ControlResult<TransportState>
+where
+  R: futures::io::AsyncRead + Unpin,
+  W: futures::io::AsyncWrite + Unpin,
+{
+  let hello_bytes = {
+    let mut message = Builder::new_default();
+    {
+      let mut hello = message.init_root::<control_capnp::control_hello::Builder>();
+      hello.set_protocol_version(CONTROL_PROTOCOL_VERSION);
+      hello.set_token(token.into());
+    }
+    write_message_to_words(&message)
+  };
+
+  writer.write_all(&hello_bytes).await?;
+  writer.flush().await?;
+
+  let response_message =
+    capnp_futures::serialize::read_message(&mut *reader, ReaderOptions::new()).await?;
+  let response = response_message
+    .get_root::<control_capnp::control_hello_response::Reader>()
+    .map_err(ControlClientError::Capnp)?;
+  if !response.get_accepted() {
+    let reason = read_text_field(response.get_message(), "control handshake message")?;
+    return Err(ControlClientError::Protocol(format!(
+      "control handshake rejected: {reason}"
+    )));
+  }
+
+  perform_client_handshake(reader, writer, token.as_bytes()).await
 }

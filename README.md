@@ -79,7 +79,6 @@ async function main() {
     await client.apply('person', 'p-110', 'person_contact_added', {
       payload: { name: 'Jane Doe', status: 'active' },
       metadata: { note: 'seed data' },
-      requireExisting: true,
     })
 
     await client.patch('person', 'p-110', 'person_status_updated', [
@@ -121,7 +120,7 @@ main().catch((err) => {
 | `client.patch(aggregateType, aggregateId, eventType, operations, options?)` | Apply an RFC 6902 JSON Patch and return the updated aggregate snapshot.                    |
 | `client.select(aggregateType, aggregateId, fields)`                         | Resolve with a JSON object containing only the requested fields when the aggregate exists. |
 
-`PageOptions` supports `{ take, skip, includeArchived, archivedOnly }` for fine-grained pagination. Set `archivedOnly` to `true` to request archived aggregates exclusively—`includeArchived` is inferred when you do. When appending events with `client.apply`, pass `requireExisting: true` if the aggregate must predate the write. `client.create` always requires an `eventType` and accepts optional `payload`, `metadata`, and `note` to seed the first snapshot. Use `client.archive`/`client.restore` with `{ comment }` to record why an aggregate changed archive state.
+`PageOptions` supports `{ take, skip, includeArchived, archivedOnly, token }` for fine-grained pagination. Set `archivedOnly` to `true` to request archived aggregates exclusively—`includeArchived` is inferred when you do. When appending events with `client.apply`, the aggregate must already exist; use `client.create` to emit the first event. `client.create` always requires an `eventType` and accepts optional `payload`, `metadata`, and `note` to seed the initial snapshot. Use `client.archive`/`client.restore` with `{ comment }` to record why an aggregate changed archive state.
 
 ## Runtime Configuration
 
@@ -165,6 +164,9 @@ interface PageOptions {
   skip?: number
   includeArchived?: boolean
   archivedOnly?: boolean
+  token?: string
+  filter?: FilterExpression
+  sort?: AggregateSort[]
 }
 
 interface AppendOptions {
@@ -172,7 +174,6 @@ interface AppendOptions {
   metadata?: Json
   note?: string
   token?: string
-  requireExisting?: boolean
 }
 
 interface CreateAggregateOptions {
@@ -191,6 +192,22 @@ interface PatchOptions {
   metadata?: Json
   note?: string
   token?: string
+}
+
+type FilterExpression =
+  | { type: 'and'; expressions: FilterExpression[] }
+  | { type: 'or'; expressions: FilterExpression[] }
+  | { type: 'not'; expression: FilterExpression }
+  | { type: 'equals'; field: string; value: string }
+  | { type: 'notEquals'; field: string; value: string }
+  | { type: 'greaterThan'; field: string; value: string }
+  | { type: 'lessThan'; field: string; value: string }
+  | { type: 'like'; field: string; value: string }
+  | { type: 'inSet'; field: string; values: string[] }
+
+interface AggregateSort {
+  field: 'aggregateType' | 'aggregateId' | 'version' | 'merkleRoot' | 'archived'
+  descending?: boolean
 }
 
 interface ClientEndpoint {
@@ -254,12 +271,6 @@ class DbxClient {
   restore<TState = Json>(
     aggregateType: string,
     aggregateId: string,
-    opts?: SetArchiveOptions,
-  ): Promise<any>
-  setArchived<TState = Json>(
-    aggregateType: string,
-    aggregateId: string,
-    archived: boolean,
     opts?: SetArchiveOptions,
   ): Promise<any>
   patch<TState = Json>(
