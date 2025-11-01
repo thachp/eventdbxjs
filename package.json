@@ -132,6 +132,9 @@
     "eventdbxjs-win32-x64-msvc": "1.1.1"
   },
   "dependencies": {
-    "eventdbxjs": "^1.1.1"
+    "@types/pg": "^8.15.6",
+    "eventdbxjs": "^1.1.1",
+    "mongodb": "^6.20.0",
+    "pg": "^8.16.3"
   }
 }

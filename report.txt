@@ -1,0 +1,268 @@
+
+> eventdbxjs@1.1.8 test /Users/thachp/repos/eventdbxjs
+> ava "--match=benchmarks *"
+
+  ⚠ The timeout option has been disabled to help with debugging.
+
+  ✔ bench › benchmarks control operations against the server (7.4s)
+    ℹ EventDBX control dataset ready: 1,000 records
+    ℹ EventDBX control operations (1,000 records):
+      operation  throughput (ops/s)  latency       
+      ---------  ------------------  --------------
+      list       1.90k ±1.70%        0.54 ns ±2.93%
+      get        1.81k ±2.08%        0.57 ns ±2.71%
+      select     1.72k ±2.20%        0.63 ns ±9.79%
+      events     1.81k ±1.41%        0.57 ns ±3.10%
+      apply      2.05k ±1.90%        0.52 ns ±7.31%
+      create     1.99k ±1.91%        0.52 ns ±2.59%
+      archive    2.26k ±1.96%        0.46 ns ±3.07%
+      restore    2.40k ±2.01%        0.43 ns ±2.59%
+      patch      2.06k ±2.42%        0.52 ns ±5.59%
+    ℹ EventDBX control dataset ready: 10,000 records
+    ℹ EventDBX control operations (10,000 records):
+      operation  throughput (ops/s)  latency        
+      ---------  ------------------  ---------------
+      list       2.19k ±1.12%        0.46 ns ±1.16% 
+      get        2.05k ±2.72%        0.53 ns ±5.28% 
+      select     1.97k ±2.23%        0.54 ns ±4.71% 
+      events     1.74k ±2.11%        0.63 ns ±10.27%
+      apply      2.15k ±1.39%        0.47 ns ±1.54% 
+      create     2.16k ±1.48%        0.47 ns ±1.86% 
+      archive    2.41k ±1.48%        0.43 ns ±2.74% 
+      restore    2.23k ±3.58%        0.54 ns ±10.75%
+      patch      2.28k ±2.12%        0.46 ns ±2.29% 
+    ℹ EventDBX control dataset ready: 100,000 records
+    ℹ EventDBX control operations (100,000 records):
+      operation  throughput (ops/s)  latency       
+      ---------  ------------------  --------------
+      list       1.91k ±1.26%        0.53 ns ±1.56%
+      get        1.84k ±1.81%        0.58 ns ±7.97%
+      select     1.87k ±2.06%        0.56 ns ±4.03%
+      events     1.79k ±1.87%        0.58 ns ±3.65%
+      apply      2.00k ±1.52%        0.51 ns ±2.50%
+      create     2.24k ±1.40%        0.46 ns ±4.43%
+      archive    2.28k ±1.77%        0.45 ns ±3.09%
+      restore    2.57k ±1.41%        0.41 ns ±7.54%
+      patch      2.48k ±1.51%        0.41 ns ±1.88%
+    ℹ EventDBX control dataset ready: 1,000,000 records
+    ℹ EventDBX control operations (1,000,000 records):
+      operation  throughput (ops/s)  latency       
+      ---------  ------------------  --------------
+      list       1.94k ±2.95%        0.56 ns ±4.10%
+      get        2.27k ±1.16%        0.45 ns ±1.82%
+      select     2.20k ±1.05%        0.46 ns ±1.09%
+      events     2.24k ±1.68%        0.46 ns ±1.86%
+      apply      2.33k ±2.07%        0.46 ns ±7.77%
+      create     2.36k ±2.51%        0.45 ns ±2.83%
+      archive    2.09k ±1.36%        0.49 ns ±2.20%
+      restore    2.02k ±1.28%        0.50 ns ±1.77%
+      patch      2.24k ±1.48%        0.45 ns ±1.48%
+  ✔ bench › benchmarks postgres operations (8s)
+    ℹ Postgres dataset ready: 1,000 records
+    ℹ Postgres operations (1,000 records):
+      operation      throughput (ops/s)  latency       
+      -------------  ------------------  --------------
+      count          36.7 ±3.39%         27.3 ns ±3.41%
+      random-read    8.41 ±2.30%         119 ns ±2.30% 
+      insert-delete  836 ±2.40%          1.22 ns ±3.03%
+      aggregate      15.1 ±7.66%         66.3 ns ±7.86%
+    ℹ Postgres dataset ready: 10,000 records
+    ℹ Postgres operations (10,000 records):
+      operation      throughput (ops/s)  latency       
+      -------------  ------------------  --------------
+      count          34.8 ±5.07%         28.8 ns ±5.27%
+      random-read    8.47 ±1.54%         118 ns ±1.55% 
+      insert-delete  837 ±2.80%          1.23 ns ±3.11%
+      aggregate      16.0 ±2.13%         62.6 ns ±2.16%
+    ℹ Postgres dataset ready: 100,000 records
+    ℹ Postgres operations (100,000 records):
+      operation      throughput (ops/s)  latency       
+      -------------  ------------------  --------------
+      count          37.1 ±1.98%         27.0 ns ±1.99%
+      random-read    8.36 ±2.25%         120 ns ±2.24% 
+      insert-delete  906 ±2.26%          1.13 ns ±2.98%
+      aggregate      15.6 ±7.69%         64.1 ns ±7.88%
+    ℹ Postgres dataset ready: 1,000,000 records
+    ℹ Postgres operations (1,000,000 records):
+      operation      throughput (ops/s)  latency       
+      -------------  ------------------  --------------
+      count          33.6 ±3.06%         29.7 ns ±3.01%
+      random-read    8.46 ±1.96%         118 ns ±1.92% 
+      insert-delete  1.02k ±3.92%        1.09 ns ±9.29%
+      aggregate      16.6 ±1.12%         60.4 ns ±1.12%
+  ✔ bench › benchmarks mongodb operations (59.5s)
+    ℹ MongoDB dataset ready: 1,000 records
+    ℹ MongoDB operations (1,000 records):
+      operation      throughput (ops/s)  latency       
+      -------------  ------------------  --------------
+      count          4.29 ±1.92%         233 ns ±1.89% 
+      random-read    1.35 ±3.77%         741 ns ±3.82% 
+      insert-delete  507 ±3.29%          2.02 ns ±3.87%
+      aggregate      1.21 ±2.95%         824 ns ±2.92% 
+    ℹ MongoDB dataset ready: 10,000 records
+    ℹ MongoDB operations (10,000 records):
+      operation      throughput (ops/s)  latency       
+      -------------  ------------------  --------------
+      count          4.58 ±0.68%         218 ns ±0.68% 
+      random-read    1.35 ±5.80%         742 ns ±6.17% 
+      insert-delete  581 ±3.48%          1.77 ns ±4.26%
+      aggregate      1.22 ±3.61%         821 ns ±3.70% 
+    ℹ MongoDB dataset ready: 100,000 records
+    ℹ MongoDB operations (100,000 records):
+      operation      throughput (ops/s)  latency       
+      -------------  ------------------  --------------
+      count          4.58 ±0.83%         218 ns ±0.82% 
+      random-read    1.35 ±2.88%         742 ns ±2.97% 
+      insert-delete  612 ±2.61%          1.67 ns ±4.16%
+      aggregate      1.22 ±2.81%         822 ns ±2.88% 
+    ℹ MongoDB dataset ready: 1,000,000 records
+    ℹ MongoDB operations (1,000,000 records):
+      operation      throughput (ops/s)  latency        
+      -------------  ------------------  ---------------
+      count          4.56 ±0.92%         219 ns ±0.92%  
+      random-read    1.36 ±3.18%         733 ns ±3.27%  
+      insert-delete  600 ±7.08%          2.09 ns ±18.09%
+      aggregate      1.24 ±3.30%         809 ns ±3.28%  
+  ─
+
+  3 tests passed
+
+> eventdbxjs@1.1.8 test /Users/thachp/repos/eventdbxjs
+> ava "--match=benchmarks *"
+
+  ⚠ The timeout option has been disabled to help with debugging.
+
+  ✔ bench › benchmarks control operations against the server (7.5s)
+    ℹ EventDBX control dataset ready: test1 (1,000 records)
+    ℹ EventDBX control operations test1 (1,000 records):
+      operation  throughput (ops/s)  latency       
+      ---------  ------------------  --------------
+      list       1.60k ±3.39%        0.72 ns ±9.27%
+      get        1.83k ±1.37%        0.55 ns ±1.53%
+      select     1.80k ±1.64%        0.57 ns ±2.32%
+      events     1.88k ±1.57%        0.55 ns ±2.85%
+      apply      2.06k ±1.63%        0.52 ns ±9.74%
+      create     2.18k ±1.35%        0.47 ns ±1.53%
+      archive    2.09k ±1.36%        0.49 ns ±1.61%
+      restore    2.08k ±1.86%        0.49 ns ±2.07%
+      patch      1.94k ±2.14%        0.55 ns ±5.41%
+
+    ℹ EventDBX control dataset ready: test2 (10,000 records)
+    ℹ EventDBX control operations test2 (10,000 records):
+      operation  throughput (ops/s)  latency        
+      ---------  ------------------  ---------------
+      list       1.69k ±3.56%        0.83 ns ±38.42%
+      get        1.72k ±2.36%        0.66 ns ±13.15%
+      select     1.65k ±1.54%        0.62 ns ±2.67% 
+      events     1.85k ±1.33%        0.57 ns ±7.25% 
+      apply      1.76k ±4.06%        0.89 ns ±30.85%
+      create     2.14k ±1.86%        0.48 ns ±1.96% 
+      archive    2.11k ±1.62%        0.49 ns ±3.04% 
+      restore    2.05k ±2.15%        0.52 ns ±3.80% 
+      patch      2.00k ±3.08%        0.56 ns ±6.88% 
+
+    ℹ EventDBX control dataset ready: test3 (100,000 records)
+    ℹ EventDBX control operations test3 (100,000 records):
+      operation  throughput (ops/s)  latency        
+      ---------  ------------------  ---------------
+      list       1.88k ±1.30%        0.54 ns ±1.39% 
+      get        1.67k ±3.30%        0.81 ns ±37.10%
+      select     1.65k ±3.00%        0.78 ns ±23.77%
+      events     1.67k ±1.53%        0.61 ns ±1.59% 
+      apply      2.07k ±1.64%        0.50 ns ±2.17% 
+      create     2.06k ±1.62%        0.50 ns ±2.17% 
+      archive    2.04k ±2.10%        0.51 ns ±2.41% 
+      restore    2.35k ±1.65%        0.44 ns ±2.01% 
+      patch      2.43k ±2.25%        0.45 ns ±7.95% 
+
+    ℹ EventDBX control dataset ready: test4 (1,000,000 records)
+    ℹ EventDBX control operations test4 (1,000,000 records):
+      operation  throughput (ops/s)  latency        
+      ---------  ------------------  ---------------
+      list       1.97k ±1.41%        0.52 ns ±1.33% 
+      get        1.77k ±2.03%        0.60 ns ±7.43% 
+      select     1.83k ±1.75%        0.56 ns ±2.47% 
+      events     1.66k ±1.91%        0.62 ns ±2.49% 
+      apply      2.03k ±1.63%        0.51 ns ±2.44% 
+      create     2.05k ±1.62%        0.50 ns ±2.57% 
+      archive    2.29k ±1.57%        0.45 ns ±2.21% 
+      restore    2.18k ±2.98%        0.69 ns ±36.18%
+      patch      2.22k ±2.97%        0.52 ns ±7.81% 
+
+  ✔ bench › benchmarks postgres operations (7.9s)
+    ℹ Postgres dataset ready: test1 (1,000 records)
+    ℹ Postgres operations test1 (1,000 records):
+      operation      throughput (ops/s)  latency       
+      -------------  ------------------  --------------
+      count          58.8 ±3.11%         17.0 ns ±3.03%
+      random-read    8.58 ±2.48%         117 ns ±2.49% 
+      insert-delete  819 ±1.90%          1.24 ns ±2.37%
+      aggregate      16.4 ±1.10%         60.9 ns ±1.10%
+
+    ℹ Postgres dataset ready: test2 (10,000 records)
+    ℹ Postgres operations test2 (10,000 records):
+      operation      throughput (ops/s)  latency       
+      -------------  ------------------  --------------
+      count          59.2 ±2.26%         16.9 ns ±2.26%
+      random-read    8.08 ±14.65%        125 ns ±16.86%
+      insert-delete  749 ±4.52%          1.46 ns ±8.80%
+      aggregate      16.2 ±0.63%         61.6 ns ±0.63%
+
+    ℹ Postgres dataset ready: test3 (100,000 records)
+    ℹ Postgres operations test3 (100,000 records):
+      operation      throughput (ops/s)  latency       
+      -------------  ------------------  --------------
+      count          57.8 ±4.00%         17.3 ns ±3.96%
+      random-read    8.44 ±2.36%         118 ns ±2.36% 
+      insert-delete  816 ±2.90%          1.29 ns ±8.17%
+      aggregate      15.9 ±5.37%         63.1 ns ±5.61%
+
+    ℹ Postgres dataset ready: test4 (1,000,000 records)
+    ℹ Postgres operations test4 (1,000,000 records):
+      operation      throughput (ops/s)  latency       
+      -------------  ------------------  --------------
+      count          56.5 ±3.75%         17.7 ns ±3.75%
+      random-read    8.02 ±19.89%        128 ns ±25.27%
+      insert-delete  1.05k ±3.31%        1.00 ns ±4.09%
+      aggregate      16.5 ±0.90%         60.6 ns ±0.90%
+
+  ✔ bench › benchmarks mongodb operations (58.9s)
+    ℹ MongoDB dataset ready: test1 (1,000 records)
+    ℹ MongoDB operations test1 (1,000 records):
+      operation      throughput (ops/s)  latency       
+      -------------  ------------------  --------------
+      count          4.19 ±12.14%        241 ns ±13.95%
+      random-read    1.31 ±7.17%         764 ns ±7.59% 
+      insert-delete  550 ±3.83%          1.88 ns ±4.25%
+      aggregate      1.23 ±4.36%         811 ns ±4.36% 
+
+    ℹ MongoDB dataset ready: test2 (10,000 records)
+    ℹ MongoDB operations test2 (10,000 records):
+      operation      throughput (ops/s)  latency       
+      -------------  ------------------  --------------
+      count          4.73 ±0.51%         212 ns ±0.51% 
+      random-read    1.43 ±1.27%         697 ns ±1.28% 
+      insert-delete  611 ±2.92%          1.69 ns ±4.96%
+      aggregate      1.29 ±2.47%         775 ns ±2.47% 
+
+    ℹ MongoDB dataset ready: test3 (100,000 records)
+    ℹ MongoDB operations test3 (100,000 records):
+      operation      throughput (ops/s)  latency       
+      -------------  ------------------  --------------
+      count          4.80 ±2.59%         208 ns ±2.62% 
+      random-read    1.36 ±4.35%         737 ns ±4.54% 
+      insert-delete  632 ±2.83%          1.63 ns ±5.27%
+      aggregate      1.22 ±8.27%         824 ns ±8.56% 
+
+    ℹ MongoDB dataset ready: test4 (1,000,000 records)
+    ℹ MongoDB operations test4 (1,000,000 records):
+      operation      throughput (ops/s)  latency       
+      -------------  ------------------  --------------
+      count          4.58 ±2.91%         219 ns ±3.00% 
+      random-read    1.37 ±2.14%         728 ns ±2.16% 
+      insert-delete  644 ±3.82%          1.65 ns ±7.03%
+      aggregate      1.19 ±2.09%         841 ns ±2.12% 
+
+  ─
+
+  3 tests passed
