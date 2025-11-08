@@ -216,8 +216,8 @@ jobs:
             sudo npm install -g corepack
             curl https://sh.rustup.rs -sSf --output rustup.sh
             sh rustup.sh -y --profile minimal --default-toolchain beta
-            corepack prepare
-            corepack enable
+            sudo corepack enable
+            corepack prepare pnpm@10.19.0 --activate
             source "$HOME/.cargo/env"
             echo "~~~~ rustc --version ~~~~"
             rustc --version
