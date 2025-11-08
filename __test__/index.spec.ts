@@ -192,7 +192,7 @@ const runMockedControlOperations = async (t: ExecutionContext) => {
       aggregateType: string,
       options: {
         take: number
-        skip: number
+        cursor?: string
         sort: Array<{ field: string; descending: boolean }>
         filter: { type: 'equals'; field: string; value: string }
       },
@@ -200,11 +200,11 @@ const runMockedControlOperations = async (t: ExecutionContext) => {
       t.is(aggregateType, 'person')
       t.deepEqual(options, {
         take: 10,
-        skip: 2,
+        cursor: 'cursor:after:p-001',
         sort: [{ field: 'version', descending: true }],
         filter: { type: 'equals', field: 'aggregateType', value: 'person' },
       })
-      return [aggregate]
+      return { items: [aggregate], nextCursor: 'cursor:after:p-010' }
     },
   )
   overrideMethod(client, 'get', async (aggregateType: string, aggregateId: string) => {
@@ -224,16 +224,16 @@ const runMockedControlOperations = async (t: ExecutionContext) => {
     async (
       aggregateType: string,
       aggregateId: string,
-      options: { take: number; skip: number; filter: { type: 'equals'; field: string; value: string } },
+      options: { take: number; cursor?: string; filter: { type: 'equals'; field: string; value: string } },
     ) => {
       t.is(aggregateType, 'person')
       t.is(aggregateId, 'p-001')
       t.deepEqual(options, {
         take: 5,
-        skip: 0,
+        cursor: undefined,
         filter: { type: 'equals', field: 'aggregateId', value: 'p-001' },
       })
-      return events
+      return { items: events, nextCursor: undefined }
     },
   )
   overrideMethod(
@@ -317,21 +317,21 @@ const runMockedControlOperations = async (t: ExecutionContext) => {
   t.deepEqual(
     await client.list('person', {
       take: 10,
-      skip: 2,
+      cursor: 'cursor:after:p-001',
       sort: [{ field: 'version', descending: true }],
       filter: { type: 'equals', field: 'aggregateType', value: 'person' },
     }),
-    [aggregate],
+    { items: [aggregate], nextCursor: 'cursor:after:p-010' },
   )
   t.deepEqual(await client.get('person', 'p-001'), aggregate)
   t.deepEqual(await client.select('person', 'p-001', ['state.name']), selection)
   t.deepEqual(
     await client.events('person', 'p-001', {
       take: 5,
-      skip: 0,
+      cursor: undefined,
       filter: { type: 'equals', field: 'aggregateId', value: 'p-001' },
     }),
-    events,
+    { items: events, nextCursor: undefined },
   )
   t.deepEqual(
     await client.apply('person', 'p-001', 'Updated', {
@@ -383,10 +383,10 @@ const runLiveControlOperations = async (t: ExecutionContext) => {
     t.true(await client.isConnected())
 
     const operations: Array<[string, AsyncCall]> = [
-      ['list', () => client.list(undefined, { take: 1, skip: 0 })],
+      ['list', () => client.list(undefined, { take: 1 })],
       ['get', () => client.get('__test__', '__test__')],
       ['select', () => client.select('__test__', '__test__', ['state'])],
-      ['events', () => client.events('__test__', '__test__', { skip: 0, take: 1 })],
+      ['events', () => client.events('__test__', '__test__', { take: 1 })],
       [
         'apply',
         () =>

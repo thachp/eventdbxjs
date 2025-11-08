@@ -178,6 +178,13 @@ pub struct PatchEventRequest {
   pub note: Option<String>,
 }
 
+/// Generic page of results returned by cursor-based control calls.
+#[derive(Debug, Clone)]
+pub struct Page<T> {
+  pub items: Vec<T>,
+  pub next_cursor: Option<String>,
+}
+
 mod serde_helpers {
   use chrono::{DateTime, Utc};
   use serde::{self, Deserialize, Deserializer, Serializer};
@@ -253,15 +260,13 @@ impl ControlClient {
   pub async fn list_aggregates(
     &mut self,
     token: &str,
-    skip: usize,
+    cursor: Option<&str>,
     take: Option<usize>,
     include_archived: bool,
     archived_only: bool,
     filter: Option<&str>,
     sort: &[AggregateSortSpec],
-  ) -> ControlResult<Vec<AggregateStateView>> {
-    let skip_u64 = u64::try_from(skip)
-      .map_err(|_| ControlClientError::Protocol("skip exceeds u64 range".into()))?;
+  ) -> ControlResult<Page<AggregateStateView>> {
     let take_u64 = match take {
       Some(value) => Some(
         u64::try_from(value)
@@ -277,7 +282,13 @@ impl ControlClient {
       request.set_id(request_id);
       let payload = request.reborrow().init_payload();
       let mut body = payload.init_list_aggregates();
-      body.set_skip(skip_u64);
+      if let Some(cursor) = cursor {
+        body.set_has_cursor(true);
+        body.set_cursor(cursor.into());
+      } else {
+        body.set_has_cursor(false);
+        body.set_cursor("".into());
+      }
       if let Some(take) = take_u64 {
         body.set_has_take(true);
         body.set_take(take);
@@ -317,7 +328,20 @@ impl ControlClient {
             let resp = resp.map_err(ControlClientError::Capnp)?;
             let json = read_text_field(resp.get_aggregates_json(), "aggregates_json")?;
             let aggregates = serde_json::from_str::<Vec<AggregateStateView>>(&json)?;
-            Ok(aggregates)
+            let next_cursor = if resp.get_has_next_cursor() {
+              let value = read_text_field(resp.get_next_cursor(), "next_cursor")?;
+              if value.is_empty() {
+                None
+              } else {
+                Some(value)
+              }
+            } else {
+              None
+            };
+            Ok(Page {
+              items: aggregates,
+              next_cursor,
+            })
           }
           control_capnp::control_response::payload::Error(err) => {
             let err = err.map_err(ControlClientError::Capnp)?;
@@ -383,12 +407,10 @@ impl ControlClient {
     token: &str,
     aggregate_type: &str,
     aggregate_id: &str,
-    skip: usize,
+    cursor: Option<&str>,
     take: Option<usize>,
     filter: Option<&str>,
-  ) -> ControlResult<Vec<StoredEventRecord>> {
-    let skip_u64 = u64::try_from(skip)
-      .map_err(|_| ControlClientError::Protocol("skip exceeds u64 range".into()))?;
+  ) -> ControlResult<Page<StoredEventRecord>> {
     let take_u64 = match take {
       Some(value) => Some(
         u64::try_from(value)
@@ -406,7 +428,13 @@ impl ControlClient {
       let mut body = payload.init_list_events();
       body.set_aggregate_type(aggregate_type.into());
       body.set_aggregate_id(aggregate_id.into());
-      body.set_skip(skip_u64);
+      if let Some(cursor) = cursor {
+        body.set_has_cursor(true);
+        body.set_cursor(cursor.into());
+      } else {
+        body.set_has_cursor(false);
+        body.set_cursor("".into());
+      }
       body.set_token(token.into());
       if let Some(take) = take_u64 {
         body.set_has_take(true);
@@ -433,7 +461,20 @@ impl ControlClient {
             let resp = resp.map_err(ControlClientError::Capnp)?;
             let json = read_text_field(resp.get_events_json(), "events_json")?;
             let events = serde_json::from_str::<Vec<StoredEventRecord>>(&json)?;
-            Ok(events)
+            let next_cursor = if resp.get_has_next_cursor() {
+              let value = read_text_field(resp.get_next_cursor(), "next_cursor")?;
+              if value.is_empty() {
+                None
+              } else {
+                Some(value)
+              }
+            } else {
+              None
+            };
+            Ok(Page {
+              items: events,
+              next_cursor,
+            })
           }
           control_capnp::control_response::payload::Error(err) => {
             let err = err.map_err(ControlClientError::Capnp)?;

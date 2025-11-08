@@ -65,11 +65,12 @@ async function main() {
 
   try {
     // get a list of people, also support filtering if needed
-    const aggregates = await client.list('person', { take: 20 })
+    const { items: aggregates, nextCursor } = await client.list('person', { take: 20 })
     console.log(
       'known people:',
       aggregates.map((agg) => agg.aggregateId),
     )
+    console.log('next cursor:', nextCursor)
 
     // create an aggregate
     const snapshot = await client.create('person', 'p-110', 'person_registered', {
@@ -96,7 +97,7 @@ async function main() {
     })
 
     // return a list of events of a p-110
-    const history = await client.events('person', 'p-110')
+    const { items: history } = await client.events('person', 'p-110')
     console.log('event count:', history.length)
   } finally {
     await client.disconnect()
@@ -127,7 +128,7 @@ main().catch((err) => {
 | `client.patch(aggregateType, aggregateId, eventType, operations, options?)` | Apply an RFC 6902 JSON Patch and return the updated aggregate snapshot.                    |
 | `client.select(aggregateType, aggregateId, fields)`                         | Resolve with a JSON object containing only the requested fields when the aggregate exists. |
 
-`PageOptions` supports `{ take, skip, includeArchived, archivedOnly, token }` for fine-grained pagination. Set `archivedOnly` to `true` to request archived aggregates exclusively—`includeArchived` is inferred when you do. When appending events with `client.apply`, the aggregate must already exist; use `client.create` to emit the first event. `client.create` always requires an `eventType` and accepts optional `payload`, `metadata`, and `note` to seed the initial snapshot. Use `client.archive`/`client.restore` with `{ comment }` to record why an aggregate changed archive state.
+`PageOptions` supports `{ take, cursor, includeArchived, archivedOnly, token }` for cursor-based pagination. Both `client.list` and `client.events` resolve to `{ items, nextCursor }` so you can feed the returned cursor into the next call. Set `archivedOnly` to `true` to request archived aggregates exclusively—`includeArchived` is inferred when you do. When appending events with `client.apply`, the aggregate must already exist; use `client.create` to emit the first event. `client.create` always requires an `eventType` and accepts optional `payload`, `metadata`, and `note` to seed the initial snapshot. Use `client.archive`/`client.restore` with `{ comment }` to record why an aggregate changed archive state.
 
 ## Runtime Configuration
 
@@ -168,13 +169,18 @@ interface ClientOptions {
 }
 
 interface PageOptions {
+  cursor?: string
   take?: number
-  skip?: number
   includeArchived?: boolean
   archivedOnly?: boolean
   token?: string
   filter?: string
   sort?: AggregateSort[]
+}
+
+interface PageResult {
+  items: Json[]
+  nextCursor?: string
 }
 
 interface AppendOptions {

@@ -11,13 +11,13 @@ export declare class DbxClient {
   /** Returns the configured endpoint (host/port). */
   get endpoint(): ClientEndpoint
   /** List aggregates, optionally restricting to a specific aggregate type. */
-  list(aggregateType?: string | undefined | null, options?: PageOptions | undefined | null): Promise<Array<any>>
+  list(aggregateType?: string | undefined | null, options?: PageOptions | undefined | null): Promise<PageResult>
   /** Fetch a single aggregate snapshot. */
   get(aggregateType: string, aggregateId: string): Promise<any | null>
   /** Select a subset of fields from an aggregate snapshot. */
   select(aggregateType: string, aggregateId: string, fields: Array<string>): Promise<any | null>
   /** List events for an aggregate. */
-  events(aggregateType: string, aggregateId: string, options?: PageOptions | undefined | null): Promise<Array<any>>
+  events(aggregateType: string, aggregateId: string, options?: PageOptions | undefined | null): Promise<PageResult>
   /** Append a new event with an arbitrary JSON payload. */
   apply(aggregateType: string, aggregateId: string, eventType: string, options?: AppendOptions | undefined | null): Promise<any>
   /** Create an aggregate and emit its initial event. */
@@ -64,13 +64,18 @@ export interface CreateAggregateOptions {
 export declare function createClient(options?: ClientOptions | undefined | null): DbxClient
 
 export interface PageOptions {
+  cursor?: string
   take?: number
-  skip?: number
   includeArchived?: boolean
   archivedOnly?: boolean
   token?: string
   filter?: string
   sort?: Array<AggregateSortInput>
+}
+
+export interface PageResult {
+  items: Array<JsonValue>
+  nextCursor?: string
 }
 
 export interface PatchOptions {

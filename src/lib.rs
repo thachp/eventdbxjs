@@ -89,13 +89,19 @@ impl From<ClientOptions> for ClientConfig {
 #[serde(rename_all = "camelCase")]
 #[napi(object)]
 pub struct PageOptions {
+  pub cursor: Option<String>,
   pub take: Option<u32>,
-  pub skip: Option<u32>,
   pub include_archived: Option<bool>,
   pub archived_only: Option<bool>,
   pub token: Option<String>,
   pub filter: Option<String>,
   pub sort: Option<Vec<AggregateSortInput>>,
+}
+
+#[napi(object)]
+pub struct PageResult {
+  pub items: Vec<JsonValue>,
+  pub next_cursor: Option<String>,
 }
 
 #[derive(Deserialize, Default)]
@@ -215,13 +221,17 @@ impl DbxClient {
     &self,
     aggregate_type: Option<String>,
     options: Option<PageOptions>,
-  ) -> napi::Result<Vec<serde_json::Value>> {
+  ) -> napi::Result<PageResult> {
     let mut guard = self.state.lock().await;
     let client = guard
       .client
       .as_mut()
       .ok_or_else(|| napi_err(Status::GenericFailure, "client is not connected"))?;
-    let skip = options.as_ref().and_then(|o| o.skip).unwrap_or(0) as usize;
+    let cursor = options
+      .as_ref()
+      .and_then(|o| o.cursor.as_ref())
+      .map(|value| value.trim().to_owned())
+      .filter(|value| !value.is_empty());
     let take = options.as_ref().and_then(|o| o.take.map(|v| v as usize));
     let archived_only = options
       .as_ref()
@@ -264,10 +274,10 @@ impl DbxClient {
       .or_else(|| self.config.token.clone())
       .unwrap_or_default();
 
-    let aggregates = client
+    let page = client
       .list_aggregates(
         token.as_str(),
-        skip,
+        cursor.as_deref(),
         take,
         include_archived,
         archived_only,
@@ -278,7 +288,8 @@ impl DbxClient {
       .map_err(control_err_to_napi)?;
 
     let filter = aggregate_type.as_deref();
-    let result = aggregates
+    let items = page
+      .items
       .into_iter()
       .filter(|agg| match filter {
         Some(kind) => agg.aggregate_type == kind,
@@ -287,7 +298,10 @@ impl DbxClient {
       .map(aggregate_to_json)
       .collect();
 
-    Ok(result)
+    Ok(PageResult {
+      items,
+      next_cursor: page.next_cursor,
+    })
   }
 
   /// Fetch a single aggregate snapshot.
@@ -341,13 +355,17 @@ impl DbxClient {
     aggregate_type: String,
     aggregate_id: String,
     options: Option<PageOptions>,
-  ) -> napi::Result<Vec<serde_json::Value>> {
+  ) -> napi::Result<PageResult> {
     let mut guard = self.state.lock().await;
     let client = guard
       .client
       .as_mut()
       .ok_or_else(|| napi_err(Status::GenericFailure, "client is not connected"))?;
-    let skip = options.as_ref().and_then(|o| o.skip).unwrap_or(0) as usize;
+    let cursor = options
+      .as_ref()
+      .and_then(|o| o.cursor.as_ref())
+      .map(|value| value.trim().to_owned())
+      .filter(|value| !value.is_empty());
     let take = options.as_ref().and_then(|o| o.take.map(|v| v as usize));
     let filter = options
       .as_ref()
@@ -360,19 +378,22 @@ impl DbxClient {
       .or_else(|| self.config.token.clone())
       .unwrap_or_default();
 
-    let events = client
+    let page = client
       .list_events(
         token.as_str(),
         &aggregate_type,
         &aggregate_id,
-        skip,
+        cursor.as_deref(),
         take,
         filter.as_deref(),
       )
       .await
       .map_err(control_err_to_napi)?;
 
-    Ok(events.into_iter().map(event_to_json).collect())
+    Ok(PageResult {
+      items: page.items.into_iter().map(event_to_json).collect(),
+      next_cursor: page.next_cursor,
+    })
   }
 
   /// Append a new event with an arbitrary JSON payload.

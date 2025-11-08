@@ -1,6 +1,6 @@
 {
   "name": "eventdbxjs",
-  "version": "1.1.8",
+  "version": "1.2.2",
   "description": "EventDBX client for Node.js",
   "main": "index.js",
   "types": "index.d.ts",
