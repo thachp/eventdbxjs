@@ -139,6 +139,7 @@ The constructor falls back to environment variables when options are omitted:
 | `EVENTDBX_HOST`  | `127.0.0.1` | Hostname or IP address of the socket |
 | `EVENTDBX_PORT`  | `6363`      | Control-plane TCP port               |
 | `EVENTDBX_TOKEN` | _empty_     | Authentication token sent on connect |
+| `EVENTDBX_TENANT_ID` | _empty_ | Tenant identifier included in the handshake |
 
 Passing explicit overrides is also supported:
 
@@ -147,9 +148,12 @@ const client = createClient({
   ip: '10.1.0.42',
   port: 7000,
   token: 'super-secret',
+  tenantId: 'tenant-a',
 })
 await client.connect()
 ```
+
+If you're running against a multi-tenant deployment, set `tenantId` (or the `EVENTDBX_TENANT_ID` env var) so the control handshake targets the expected tenant.
 
 ## TypeScript Surface
 
@@ -165,6 +169,7 @@ interface ClientOptions {
   ip?: string
   port?: number
   token?: string
+  tenantId?: string
   verbose?: boolean
 }
 

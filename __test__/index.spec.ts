@@ -12,7 +12,8 @@ const baseOptions = {
   ip: '127.0.0.1',
   port: 6363,
   token:
-    'eyJ0eXAiOiJKV1QiLCJhbGciOiJFZERTQSIsImtpZCI6ImtleS0yMDI1MTEwMTExMjcyMCJ9.eyJpc3MiOiJldmVudGRieDovL3NlbGYiLCJhdWQiOiJldmVudGRieC1jbGllbnRzIiwic3ViIjoiY2xpOmJvb3RzdHJhcCIsImp0aSI6Ijk5Y2VkM2M5LTk2MTktNGYyNS04MWVjLWQzMDEwOWIxYmY5NSIsImlhdCI6MTc2MTk5NjQ0MCwiZ3JvdXAiOiJjbGkiLCJ1c2VyIjoicm9vdCIsImFjdGlvbnMiOlsiKi4qIl0sInJlc291cmNlcyI6WyIqIl0sImlzc3VlZF9ieSI6ImNsaS1ib290c3RyYXAiLCJsaW1pdHMiOnsid3JpdGVfZXZlbnRzIjpudWxsLCJrZWVwX2FsaXZlIjpmYWxzZX19.DvOizlvAYs71HxOLnF439NNrAZuZu_uNyPpyiLyebB7GjkftZwpGLkvSvtvYLymzbKVFP52qWeZ7sGTF-3-ZDw',
+    'eyJ0eXAiOiJKV1QiLCJhbGciOiJFZERTQSIsImtpZCI6ImtleS0yMDI1MTEwOTIwNTExNiJ9.eyJpc3MiOiJldmVudGRieDovL3NlbGYiLCJhdWQiOiJldmVudGRieC1jbGllbnRzIiwic3ViIjoiY2xpOmJvb3RzdHJhcCIsImp0aSI6Ijc5Y2VmMTRmLTVjZjMtNDJhNC04NjU1LWFlMjgwOTJjZTA1ZSIsImlhdCI6MTc2MjcyMTQ3NiwiZ3JvdXAiOiJjbGkiLCJ1c2VyIjoicm9vdCIsImFjdGlvbnMiOlsiKi4qIl0sInJlc291cmNlcyI6WyIqIl0sImlzc3VlZF9ieSI6ImNsaS1ib290c3RyYXAiLCJsaW1pdHMiOnsid3JpdGVfZXZlbnRzIjpudWxsLCJrZWVwX2FsaXZlIjpmYWxzZX0sInRlbmFudHMiOltdfQ.t6QCHvxL47JwVY2eJ1izMIIREZlOFC0VWuWxiMWysj34x54OwrUpRKtSOYrOV4tmUR1AS96aDpb5n7tw66NsCg',
+  tenantId: runtimeEnv.EVENTDBX_TEST_TENANT_ID,
 }
 
 type AsyncCall = () => Promise<unknown>
@@ -21,6 +22,7 @@ type ControlClientOptions = {
   ip: string
   port: number
   token: string
+  tenantId?: string
 }
 
 type NetSocket = {
@@ -47,6 +49,7 @@ const integrationOptions: ControlClientOptions = {
   ip: runtimeEnv.EVENTDBX_TEST_IP ?? baseOptions.ip,
   port: parsePort(runtimeEnv.EVENTDBX_TEST_PORT, baseOptions.port),
   token: runtimeEnv.EVENTDBX_TEST_TOKEN ?? baseOptions.token,
+  tenantId: runtimeEnv.EVENTDBX_TEST_TENANT_ID ?? baseOptions.tenantId,
 }
 
 const buildClient = (overrides: Record<string, unknown> = {}) => createClient({ ...baseOptions, ...overrides })

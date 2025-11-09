@@ -237,17 +237,34 @@ pub struct ControlClient {
 impl ControlClient {
   /// Connect to the control socket at `addr` (e.g. `"127.0.0.1:6363"`).
   pub async fn connect(addr: &str, token: &str) -> ControlResult<Self> {
+    Self::connect_with_tenant(addr, token, None).await
+  }
+
+  /// Connect to the control socket and include an optional tenant identifier during the handshake.
+  pub async fn connect_with_tenant(
+    addr: &str,
+    token: &str,
+    tenant_id: Option<&str>,
+  ) -> ControlResult<Self> {
     let token = token.trim();
     if token.is_empty() {
       return Err(ControlClientError::Protocol(
         "control token is required to establish a connection".into(),
       ));
     }
+    let tenant_id = tenant_id.and_then(|value| {
+      let trimmed = value.trim();
+      if trimmed.is_empty() {
+        None
+      } else {
+        Some(trimmed)
+      }
+    });
     let stream = TcpStream::connect(addr).await?;
     let (reader_half, writer_half) = stream.into_split();
     let mut reader = reader_half.compat();
     let mut writer = writer_half.compat_write();
-    let noise = send_control_handshake(&mut reader, &mut writer, token).await?;
+    let noise = send_control_handshake(&mut reader, &mut writer, token, tenant_id).await?;
     Ok(Self {
       reader,
       writer,
@@ -923,6 +940,7 @@ async fn send_control_handshake<R, W>(
   reader: &mut R,
   writer: &mut W,
   token: &str,
+  tenant_id: Option<&str>,
 ) -> ControlResult<TransportState>
 where
   R: futures::io::AsyncRead + Unpin,
@@ -934,6 +952,8 @@ where
       let mut hello = message.init_root::<control_capnp::control_hello::Builder>();
       hello.set_protocol_version(CONTROL_PROTOCOL_VERSION);
       hello.set_token(token.into());
+      let tenant = tenant_id.unwrap_or("");
+      hello.set_tenant_id(tenant.into());
     }
     write_message_to_words(&message)
   };

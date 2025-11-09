@@ -26,6 +26,7 @@ struct ClientConfig {
   ip: String,
   port: u16,
   token: Option<String>,
+  tenant_id: Option<String>,
   verbose: bool,
 }
 
@@ -38,6 +39,9 @@ impl Default for ClientConfig {
         .and_then(|value| value.parse::<u16>().ok())
         .unwrap_or(6363),
       token: std::env::var("EVENTDBX_TOKEN")
+        .ok()
+        .filter(|value| !value.is_empty()),
+      tenant_id: std::env::var("EVENTDBX_TENANT_ID")
         .ok()
         .filter(|value| !value.is_empty()),
       verbose: std::env::var("EVENTDBX_VERBOSE")
@@ -63,6 +67,8 @@ pub struct ClientOptions {
   pub ip: Option<String>,
   pub port: Option<u16>,
   pub token: Option<String>,
+  #[napi(js_name = "tenantId")]
+  pub tenant_id: Option<String>,
   pub verbose: Option<bool>,
 }
 
@@ -77,6 +83,9 @@ impl From<ClientOptions> for ClientConfig {
     }
     if let Some(token) = options.token {
       config.token = Some(token);
+    }
+    if let Some(tenant) = options.tenant_id {
+      config.tenant_id = Some(tenant);
     }
     if let Some(verbose) = options.verbose {
       config.verbose = verbose;
@@ -184,7 +193,13 @@ impl DbxClient {
           "control token must be provided via client options or EVENTDBX_TOKEN",
         )
       })?;
-    let client = ControlClient::connect(&addr, token.as_str())
+    let tenant_id = self
+      .config
+      .tenant_id
+      .clone()
+      .map(|value| value.trim().to_owned())
+      .filter(|value| !value.is_empty());
+    let client = ControlClient::connect_with_tenant(&addr, token.as_str(), tenant_id.as_deref())
       .await
       .map_err(control_err_to_napi)?;
     guard.client = Some(client);
@@ -724,6 +739,7 @@ mod tests {
         ip: None,
         port: None,
         token: None,
+        tenant_id: None,
         verbose: Some(true),
       };
       let config: ClientConfig = options.into();
@@ -739,6 +755,7 @@ mod tests {
         ip: None,
         port: None,
         token: None,
+        tenant_id: None,
         verbose: Some(false),
       };
       let config: ClientConfig = options.into();
