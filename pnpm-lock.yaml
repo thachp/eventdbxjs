@@ -9,8 +9,8 @@ dependencies:
     specifier: ^8.15.6
     version: 8.15.6
   eventdbxjs:
-    specifier: ^1.1.1
-    version: 1.1.1
+    specifier: ^1.3.1
+    version: 1.3.1
   mongodb:
     specifier: ^6.20.0
     version: 6.20.0
@@ -1837,8 +1837,26 @@ packages:
     dev: false
     optional: true
 
+  /eventdbxjs-android-arm-eabi@1.3.1:
+    resolution: {integrity: sha512-4RVnwBqZgWhIrYbSpmjPdcHSgsX5utYzH2TN9YJlttPsuroRGH/g6oVG5UXU122KuC40atY/KldwVjCwmgSRuw==}
+    engines: {node: '>= 10'}
+    cpu: [arm]
+    os: [android]
+    requiresBuild: true
+    dev: false
+    optional: true
+
   /eventdbxjs-android-arm64@1.1.1:
     resolution: {integrity: sha512-OCJeIn+joSLYnhpGkrC/YwwLM/otn4uhdrbRMBbTsPkDd0w5q4AE15QEkcS9UCt8umD6Wpa9G2oigx8jAX5xzg==}
+    engines: {node: '>= 10'}
+    cpu: [arm64]
+    os: [android]
+    requiresBuild: true
+    dev: false
+    optional: true
+
+  /eventdbxjs-android-arm64@1.3.1:
+    resolution: {integrity: sha512-5QNDEsPriBcuubWaFs/Sp19vpKyZp3xjOYUimGd3mePmvPmhBLfAk8eLOBAJ679RcCWywHcv26rLrVpR6Rh4MA==}
     engines: {node: '>= 10'}
     cpu: [arm64]
     os: [android]
@@ -1855,8 +1873,26 @@ packages:
     dev: false
     optional: true
 
+  /eventdbxjs-darwin-arm64@1.3.1:
+    resolution: {integrity: sha512-c8V6MOzFpMF/UXCj52y+iiATC4hNvXmeX3etI2ji7AtX3NQ1l6YTeDd63pvaUw9eBJeKMh6kTYWB1xmrzwlySw==}
+    engines: {node: '>= 10'}
+    cpu: [arm64]
+    os: [darwin]
+    requiresBuild: true
+    dev: false
+    optional: true
+
   /eventdbxjs-darwin-x64@1.1.1:
     resolution: {integrity: sha512-eSpkQJF1kZ6jXujEaO3k4ZokrdxlajhizmialRnMOcuBfnOmPfaMpPjOjYdSPgAqda4CnQrmj0jwHgTYJ6CjMg==}
+    engines: {node: '>= 10'}
+    cpu: [x64]
+    os: [darwin]
+    requiresBuild: true
+    dev: false
+    optional: true
+
+  /eventdbxjs-darwin-x64@1.3.1:
+    resolution: {integrity: sha512-aV0pg8TYVZ5EC8FGU7tLUsrvJZFze2oFsndXyRGRxHbBjHBQ5hB2+/w+vO9d2bJboj0Pi1e9fgvPKGqDyDLRXQ==}
     engines: {node: '>= 10'}
     cpu: [x64]
     os: [darwin]
@@ -1873,8 +1909,26 @@ packages:
     dev: false
     optional: true
 
+  /eventdbxjs-freebsd-x64@1.3.1:
+    resolution: {integrity: sha512-0frBt92Siz7RAL2MYd3nS8qRK2uf0fxnwMfsmrHRH+t+XSIO31Urj9qKnlmzEv2O6AlJpOkjUYm3pkYVgq3lUg==}
+    engines: {node: '>= 10'}
+    cpu: [x64]
+    os: [freebsd]
+    requiresBuild: true
+    dev: false
+    optional: true
+
   /eventdbxjs-linux-arm-gnueabihf@1.1.1:
     resolution: {integrity: sha512-lVo+lXSYElG6Wzyz1nngub5lZbYbLIc+JsDNr/9p7T5jssyyEVuf+wxcpfkT3HNC3dCSkJ80KaFCTF/kX3tfYA==}
+    engines: {node: '>= 10'}
+    cpu: [arm]
+    os: [linux]
+    requiresBuild: true
+    dev: false
+    optional: true
+
+  /eventdbxjs-linux-arm-gnueabihf@1.3.1:
+    resolution: {integrity: sha512-R7q2mmg+Yd3h1HedQS11TjHtuqhCIvtYxvMzY34zKlq7p9xvW1VAJRDSUj8oTwwGmVeDjjlmDnfoKHDjh8lAoQ==}
     engines: {node: '>= 10'}
     cpu: [arm]
     os: [linux]
@@ -1891,8 +1945,26 @@ packages:
     dev: false
     optional: true
 
+  /eventdbxjs-linux-arm64-gnu@1.3.1:
+    resolution: {integrity: sha512-qsmOEx5vwKQjWhmqlQ0kxuPuseDxpY3WRhXu45Y0vM/4BEA+ljabIw/xtyh3KWNaW71FxkbKMQForDAJ73CnVA==}
+    engines: {node: '>= 10'}
+    cpu: [arm64]
+    os: [linux]
+    requiresBuild: true
+    dev: false
+    optional: true
+
   /eventdbxjs-linux-arm64-musl@1.1.1:
     resolution: {integrity: sha512-24BATKHkaozIoY+OIzB1QshINeizoJuV6XAv22Ngzyu8d8oh7DH+3hH9XeMgtM2+1H+dCXMpVClCa6ij4kfmFg==}
+    engines: {node: '>= 10'}
+    cpu: [arm64]
+    os: [linux]
+    requiresBuild: true
+    dev: false
+    optional: true
+
+  /eventdbxjs-linux-arm64-musl@1.3.1:
+    resolution: {integrity: sha512-Ghd+kp8aBnbmw4xXs5ucSYGjoEsRRmLaTTa6sw814jte0dZmLxTHdx+fhRaHSB+NkEk1PbEfMMPyQFfpiJIR7Q==}
     engines: {node: '>= 10'}
     cpu: [arm64]
     os: [linux]
@@ -1909,8 +1981,26 @@ packages:
     dev: false
     optional: true
 
+  /eventdbxjs-linux-x64-gnu@1.3.1:
+    resolution: {integrity: sha512-TeHKaO0uyaec/rIRUNHJca1vxlW1bCwJjdQm7Eb2FwtFREN1L2l0LuxVUc6jvuuDBJO94xK6u873UXkxa/wzcA==}
+    engines: {node: '>= 10'}
+    cpu: [x64]
+    os: [linux]
+    requiresBuild: true
+    dev: false
+    optional: true
+
   /eventdbxjs-linux-x64-musl@1.1.1:
     resolution: {integrity: sha512-1lMLatTwWGepHLZcdth0LazMKNdE0EE1C+O1g04jl0QmpuYTudaQE4fIFS8YqoO0cTsXsOlHVJMPyQKdMA1KTg==}
+    engines: {node: '>= 10'}
+    cpu: [x64]
+    os: [linux]
+    requiresBuild: true
+    dev: false
+    optional: true
+
+  /eventdbxjs-linux-x64-musl@1.3.1:
+    resolution: {integrity: sha512-4vdpBNuxOkSVno0jGH906A6gCg0ZEm8m5qOYQugbuue+/kWwGH4EUROPbedwfXhOk5LfACyyZxZLGlngP4NE1w==}
     engines: {node: '>= 10'}
     cpu: [x64]
     os: [linux]
@@ -1927,8 +2017,26 @@ packages:
     dev: false
     optional: true
 
+  /eventdbxjs-win32-arm64-msvc@1.3.1:
+    resolution: {integrity: sha512-gUGijF/BCruKgQZ5vB1lvKNxcmDdzKoxbRdvCmcIJKXIPPJbRzbCNnmUvB6HBZr80gUtWWsJOwUZUg/qoobUPA==}
+    engines: {node: '>= 10'}
+    cpu: [arm64]
+    os: [win32]
+    requiresBuild: true
+    dev: false
+    optional: true
+
   /eventdbxjs-win32-ia32-msvc@1.1.1:
     resolution: {integrity: sha512-bLBlnLfcCawoV5YukJ3GNAPLmLlWJtZ1yZAd+FPRIgWW67oGhitsJ63/8EaLn/qOmMB9pEPqA6I4hVEFsrG8Bg==}
+    engines: {node: '>= 10'}
+    cpu: [ia32]
+    os: [win32]
+    requiresBuild: true
+    dev: false
+    optional: true
+
+  /eventdbxjs-win32-ia32-msvc@1.3.1:
+    resolution: {integrity: sha512-dAX1L5UJ1ng4Bz60CzOmx0/2N5JqajC9Q3AweM9CgBfnH7npVD9WWlrs4YcgoiK9LvTgBfEyYaxH5N7+GjwRLw==}
     engines: {node: '>= 10'}
     cpu: [ia32]
     os: [win32]
@@ -1945,23 +2053,45 @@ packages:
     dev: false
     optional: true
 
-  /eventdbxjs@1.1.1:
-    resolution: {integrity: sha512-+7Iz7iRyn8wt4EfzdQUOj7NoPFtRJMFs6j2eDrINZmjMJOZoK768MgFnjNmVMC62wN1g0lFnsWdmTj+t6QlkBA==}
+  /eventdbxjs-win32-x64-msvc@1.3.1:
+    resolution: {integrity: sha512-6pb7U25dZlEQmv2XsxmzzJ8/GqZizPGXlw+ch1nT1Icgz7WlbhtnYeRYrOPltC//w5cT9VfrB9DIOW+ApRNOSQ==}
     engines: {node: '>= 10'}
+    cpu: [x64]
+    os: [win32]
+    requiresBuild: true
+    dev: false
+    optional: true
+
+  /eventdbxjs@1.3.1:
+    resolution: {integrity: sha512-E6szpI/4cj+E4ijszNs6E3DYyR1W2aWtac4fR5Q03zQeajfDMIx5rse/ME1cnmMvANXetmUqhCmJzj6sVOr/HQ==}
+    engines: {node: '>= 10'}
+    dependencies:
+      '@types/pg': 8.15.6
+      mongodb: 6.20.0
+      pg: 8.16.3
     optionalDependencies:
-      eventdbxjs-android-arm-eabi: 1.1.1
-      eventdbxjs-android-arm64: 1.1.1
-      eventdbxjs-darwin-arm64: 1.1.1
-      eventdbxjs-darwin-x64: 1.1.1
-      eventdbxjs-freebsd-x64: 1.1.1
-      eventdbxjs-linux-arm-gnueabihf: 1.1.1
-      eventdbxjs-linux-arm64-gnu: 1.1.1
-      eventdbxjs-linux-arm64-musl: 1.1.1
-      eventdbxjs-linux-x64-gnu: 1.1.1
-      eventdbxjs-linux-x64-musl: 1.1.1
-      eventdbxjs-win32-arm64-msvc: 1.1.1
-      eventdbxjs-win32-ia32-msvc: 1.1.1
-      eventdbxjs-win32-x64-msvc: 1.1.1
+      eventdbxjs-android-arm-eabi: 1.3.1
+      eventdbxjs-android-arm64: 1.3.1
+      eventdbxjs-darwin-arm64: 1.3.1
+      eventdbxjs-darwin-x64: 1.3.1
+      eventdbxjs-freebsd-x64: 1.3.1
+      eventdbxjs-linux-arm-gnueabihf: 1.3.1
+      eventdbxjs-linux-arm64-gnu: 1.3.1
+      eventdbxjs-linux-arm64-musl: 1.3.1
+      eventdbxjs-linux-x64-gnu: 1.3.1
+      eventdbxjs-linux-x64-musl: 1.3.1
+      eventdbxjs-win32-arm64-msvc: 1.3.1
+      eventdbxjs-win32-ia32-msvc: 1.3.1
+      eventdbxjs-win32-x64-msvc: 1.3.1
+    transitivePeerDependencies:
+      - '@aws-sdk/credential-providers'
+      - '@mongodb-js/zstd'
+      - gcp-metadata
+      - kerberos
+      - mongodb-client-encryption
+      - pg-native
+      - snappy
+      - socks
     dev: false
 
   /eventemitter3@5.0.1:

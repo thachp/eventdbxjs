@@ -577,7 +577,7 @@ impl DbxClient {
     aggregate_type: String,
     aggregate_id: String,
     event_type: String,
-    operations: Vec<serde_json::Value>,
+    #[napi(ts_arg_type = "JsonPatch[]")] operations: Vec<serde_json::Value>,
     options: Option<PatchOptions>,
   ) -> napi::Result<serde_json::Value> {
     let mut guard = self.state.lock().await;

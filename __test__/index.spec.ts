@@ -205,7 +205,7 @@ const runMockedControlOperations = async (t: ExecutionContext) => {
         take: 10,
         cursor: 'cursor:after:p-001',
         sort: [{ field: 'version', descending: true }],
-        filter: { type: 'equals', field: 'aggregateType', value: 'person' },
+        filter: 'person.active == true',
       })
       return { items: [aggregate], nextCursor: 'cursor:after:p-010' }
     },
@@ -234,7 +234,7 @@ const runMockedControlOperations = async (t: ExecutionContext) => {
       t.deepEqual(options, {
         take: 5,
         cursor: undefined,
-        filter: { type: 'equals', field: 'aggregateId', value: 'p-001' },
+        filter: 'aggregateId == "p-001" AND aggregateType == "person"',
       })
       return { items: events, nextCursor: undefined }
     },
@@ -322,7 +322,7 @@ const runMockedControlOperations = async (t: ExecutionContext) => {
       take: 10,
       cursor: 'cursor:after:p-001',
       sort: [{ field: 'version', descending: true }],
-      filter: { type: 'equals', field: 'aggregateType', value: 'person' },
+      filter: 'person.active == true',
     }),
     { items: [aggregate], nextCursor: 'cursor:after:p-010' },
   )
@@ -332,7 +332,7 @@ const runMockedControlOperations = async (t: ExecutionContext) => {
     await client.events('person', 'p-001', {
       take: 5,
       cursor: undefined,
-      filter: { type: 'equals', field: 'aggregateId', value: 'p-001' },
+      filter: 'aggregateId == "p-001" AND aggregateType == "person"',
     }),
     { items: events, nextCursor: undefined },
   )
