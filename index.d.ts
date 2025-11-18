@@ -66,6 +66,13 @@ export interface ClientOptions {
   token?: string
   tenantId?: string
   verbose?: boolean
+  retry?: RetryOptions
+}
+
+export interface RetryOptions {
+  attempts?: number
+  initialDelayMs?: number
+  maxDelayMs?: number
 }
 
 export interface CreateAggregateOptions {

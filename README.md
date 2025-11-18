@@ -10,6 +10,7 @@
 - 🧾 JSON (de)serialisation for aggregates and event envelopes.
 - 🧪 Built-in JSON Patch support (`[{ op, path, value }]`).
 - 🧵 Async API surface designed for `async/await`.
+- 🔁 Automatic retries with configurable exponential backoff.
 - 🧱 Portable builds across macOS, Linux, and Windows via Cargo.
 
 ## Prerequisites
@@ -59,6 +60,11 @@ async function main() {
     port: Number(process.env.EVENTDBX_PORT) || 6363,
     token: process.env.EVENTDBX_TOKEN,
     verbose: false, // set true or false for mutate response, this should match verbose_responses = false on the server config file
+    retry: {
+      attempts: 3,
+      initialDelayMs: 100,
+      maxDelayMs: 1_000,
+    },
   })
 
   await client.connect()
@@ -155,6 +161,23 @@ await client.connect()
 
 If you're running against a multi-tenant deployment, set `tenantId` (or the `EVENTDBX_TENANT_ID` env var) so the control handshake targets the expected tenant.
 
+### Retry configuration
+
+Each `DbxClient` automatically retries connection attempts and RPCs that fail due to transport/capnp errors. Retries are disabled by default (`attempts = 1`), but you can opt-in by passing a `retry` object:
+
+```js
+const client = createClient({
+  token: process.env.EVENTDBX_TOKEN,
+  retry: {
+    attempts: 4,          // total tries (initial attempt + 3 retries)
+    initialDelayMs: 100,  // first backoff duration
+    maxDelayMs: 2_000,    // clamp exponential backoff
+  },
+})
+```
+
+Backoff doubles on each retry until `maxDelayMs` is reached. Only IO-level disconnects (e.g., socket resets) trigger a retry; logical server errors still surface immediately so you can handle them explicitly.
+
 ## TypeScript Surface
 
 ```ts
@@ -171,6 +194,13 @@ interface ClientOptions {
   token?: string
   tenantId?: string
   verbose?: boolean
+  retry?: RetryOptions
+}
+
+interface RetryOptions {
+  attempts?: number
+  initialDelayMs?: number
+  maxDelayMs?: number
 }
 
 interface PageOptions {

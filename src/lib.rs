@@ -5,21 +5,24 @@
 //! list aggregates, fetch a single aggregate, enumerate events, append a new
 //! event, or apply a JSON Patch against the current state.
 
+use futures::future::BoxFuture;
 use std::str::FromStr;
 use std::sync::Arc;
+use std::time::Duration;
 
 pub mod plugin_api;
 
 use crate::plugin_api::{
   AggregateSortFieldSpec, AggregateSortSpec, AggregateStateView, AppendEventRequest, ControlClient,
-  ControlClientError, CreateAggregateRequest, PatchEventRequest, SetAggregateArchiveRequest,
-  StoredEventRecord,
+  ControlClientError, ControlResult, CreateAggregateRequest, PatchEventRequest,
+  SetAggregateArchiveRequest, StoredEventRecord,
 };
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 use serde::Deserialize;
 use serde_json::{json, Map as JsonMap, Value as JsonValue};
 use tokio::sync::Mutex;
+use tokio::time::sleep;
 
 #[derive(Clone, Debug)]
 struct ClientConfig {
@@ -28,6 +31,52 @@ struct ClientConfig {
   token: Option<String>,
   tenant_id: Option<String>,
   verbose: bool,
+  retry: RetryConfig,
+}
+
+const MISSING_TOKEN_MESSAGE: &str =
+  "control token must be provided via client options or EVENTDBX_TOKEN";
+const CLIENT_NOT_CONNECTED_MESSAGE: &str = "client is not connected";
+
+#[derive(Clone, Debug)]
+struct RetryConfig {
+  max_attempts: u32,
+  initial_delay_ms: u64,
+  max_delay_ms: u64,
+}
+
+impl Default for RetryConfig {
+  fn default() -> Self {
+    Self {
+      max_attempts: 1,
+      initial_delay_ms: 50,
+      max_delay_ms: 1_000,
+    }
+  }
+}
+
+impl RetryConfig {
+  fn attempts(&self) -> u32 {
+    self.max_attempts.max(1)
+  }
+
+  fn delay_for_attempt(&self, attempt_number: u32) -> Duration {
+    if attempt_number <= 1 || self.initial_delay_ms == 0 {
+      return Duration::from_millis(0);
+    }
+
+    let exponent = attempt_number.saturating_sub(2).min(31);
+    let multiplier = 1u64.checked_shl(exponent).unwrap_or(u64::MAX);
+    let scaled = self.initial_delay_ms.saturating_mul(multiplier);
+    Duration::from_millis(scaled.min(self.max_delay_ms))
+  }
+}
+
+#[derive(Clone, Debug)]
+struct HandshakeParams {
+  endpoint: String,
+  token: String,
+  tenant_id: Option<String>,
 }
 
 impl Default for ClientConfig {
@@ -47,6 +96,7 @@ impl Default for ClientConfig {
       verbose: std::env::var("EVENTDBX_VERBOSE")
         .map(|value| matches!(value.as_str(), "1" | "true" | "yes"))
         .unwrap_or(false),
+      retry: RetryConfig::default(),
     }
   }
 }
@@ -54,6 +104,25 @@ impl Default for ClientConfig {
 impl ClientConfig {
   fn endpoint(&self) -> String {
     format!("{}:{}", self.ip, self.port)
+  }
+
+  fn handshake_params(&self) -> Option<HandshakeParams> {
+    let token = self.token.as_ref()?.trim();
+    if token.is_empty() {
+      return None;
+    }
+
+    let tenant_id = self
+      .tenant_id
+      .as_ref()
+      .map(|value| value.trim().to_owned())
+      .filter(|value| !value.is_empty());
+
+    Some(HandshakeParams {
+      endpoint: self.endpoint(),
+      token: token.to_string(),
+      tenant_id,
+    })
   }
 }
 
@@ -70,6 +139,7 @@ pub struct ClientOptions {
   #[napi(js_name = "tenantId")]
   pub tenant_id: Option<String>,
   pub verbose: Option<bool>,
+  pub retry: Option<RetryOptions>,
 }
 
 impl From<ClientOptions> for ClientConfig {
@@ -89,6 +159,38 @@ impl From<ClientOptions> for ClientConfig {
     }
     if let Some(verbose) = options.verbose {
       config.verbose = verbose;
+    }
+    if let Some(retry) = options.retry {
+      config.retry = retry.into();
+    }
+    config
+  }
+}
+
+#[derive(Default)]
+#[napi(object)]
+pub struct RetryOptions {
+  pub attempts: Option<u32>,
+  #[napi(js_name = "initialDelayMs")]
+  pub initial_delay_ms: Option<u32>,
+  #[napi(js_name = "maxDelayMs")]
+  pub max_delay_ms: Option<u32>,
+}
+
+impl From<RetryOptions> for RetryConfig {
+  fn from(options: RetryOptions) -> Self {
+    let mut config = RetryConfig::default();
+    if let Some(attempts) = options.attempts {
+      config.max_attempts = attempts.max(1);
+    }
+    if let Some(initial_delay_ms) = options.initial_delay_ms {
+      config.initial_delay_ms = u64::from(initial_delay_ms);
+    }
+    if let Some(max_delay_ms) = options.max_delay_ms {
+      config.max_delay_ms = u64::from(max_delay_ms);
+    }
+    if config.max_delay_ms < config.initial_delay_ms {
+      config.max_delay_ms = config.initial_delay_ms;
     }
     config
   }
@@ -176,34 +278,48 @@ impl DbxClient {
   /// Establish a TCP connection to the EventDBX control socket.
   #[napi]
   pub async fn connect(&self) -> napi::Result<()> {
+    let params = self
+      .config
+      .handshake_params()
+      .ok_or_else(|| napi_err(Status::InvalidArg, MISSING_TOKEN_MESSAGE))?;
+    let endpoint = params.endpoint;
+    let token = params.token;
+    let tenant_id = params.tenant_id;
+
     let mut guard = self.state.lock().await;
     if guard.client.is_some() {
       return Ok(());
     }
 
-    let addr = self.config.endpoint();
-    let token = self
-      .config
-      .token
-      .clone()
-      .filter(|value| !value.trim().is_empty())
-      .ok_or_else(|| {
-        napi_err(
-          Status::InvalidArg,
-          "control token must be provided via client options or EVENTDBX_TOKEN",
-        )
-      })?;
-    let tenant_id = self
-      .config
-      .tenant_id
-      .clone()
-      .map(|value| value.trim().to_owned())
-      .filter(|value| !value.is_empty());
-    let client = ControlClient::connect_with_tenant(&addr, token.as_str(), tenant_id.as_deref())
-      .await
-      .map_err(control_err_to_napi)?;
-    guard.client = Some(client);
-    Ok(())
+    let max_attempts = self.config.retry.attempts();
+    let mut attempt = 0;
+
+    loop {
+      attempt += 1;
+      match ControlClient::connect_with_tenant(&endpoint, token.as_str(), tenant_id.as_deref())
+        .await
+      {
+        Ok(client) => {
+          guard.client = Some(client);
+          return Ok(());
+        }
+        Err(err) => {
+          if attempt >= max_attempts {
+            return Err(control_err_to_napi(err));
+          }
+
+          let delay = self.config.retry.delay_for_attempt(attempt + 1);
+          drop(guard);
+          if delay.as_millis() > 0 {
+            sleep(delay).await;
+          }
+          guard = self.state.lock().await;
+          if guard.client.is_some() {
+            return Ok(());
+          }
+        }
+      }
+    }
   }
 
   /// Close the underlying socket, if connected.
@@ -237,11 +353,6 @@ impl DbxClient {
     aggregate_type: Option<String>,
     options: Option<PageOptions>,
   ) -> napi::Result<PageResult> {
-    let mut guard = self.state.lock().await;
-    let client = guard
-      .client
-      .as_mut()
-      .ok_or_else(|| napi_err(Status::GenericFailure, "client is not connected"))?;
     let cursor = options
       .as_ref()
       .and_then(|o| o.cursor.as_ref())
@@ -288,17 +399,32 @@ impl DbxClient {
       .and_then(|o| o.token.clone())
       .or_else(|| self.config.token.clone())
       .unwrap_or_default();
-
-    let page = client
-      .list_aggregates(
-        token.as_str(),
-        cursor.as_deref(),
-        take,
-        include_archived,
-        archived_only,
-        filter.as_deref(),
-        sort_specs.as_slice(),
-      )
+    let page = self
+      .call_with_retry({
+        let cursor = cursor;
+        let filter = filter;
+        let token = token;
+        let sort_specs = sort_specs;
+        move |client| {
+          let token = token.clone();
+          let cursor = cursor.clone();
+          let filter = filter.clone();
+          let sort_specs = sort_specs.clone();
+          Box::pin(async move {
+            client
+              .list_aggregates(
+                token.as_str(),
+                cursor.as_deref(),
+                take,
+                include_archived,
+                archived_only,
+                filter.as_deref(),
+                sort_specs.as_slice(),
+              )
+              .await
+          })
+        }
+      })
       .await
       .map_err(control_err_to_napi)?;
 
@@ -326,14 +452,23 @@ impl DbxClient {
     aggregate_type: String,
     aggregate_id: String,
   ) -> napi::Result<Option<serde_json::Value>> {
-    let mut guard = self.state.lock().await;
-    let client = guard
-      .client
-      .as_mut()
-      .ok_or_else(|| napi_err(Status::GenericFailure, "client is not connected"))?;
     let token = self.config.token.clone().unwrap_or_default();
-    let aggregate = client
-      .get_aggregate(token.as_str(), &aggregate_type, &aggregate_id)
+    let aggregate = self
+      .call_with_retry({
+        let token = token;
+        let aggregate_type = aggregate_type;
+        let aggregate_id = aggregate_id;
+        move |client| {
+          let token = token.clone();
+          let aggregate_type = aggregate_type.clone();
+          let aggregate_id = aggregate_id.clone();
+          Box::pin(async move {
+            client
+              .get_aggregate(token.as_str(), &aggregate_type, &aggregate_id)
+              .await
+          })
+        }
+      })
       .await
       .map_err(control_err_to_napi)?;
 
@@ -348,15 +483,26 @@ impl DbxClient {
     aggregate_id: String,
     fields: Vec<String>,
   ) -> napi::Result<Option<serde_json::Value>> {
-    let mut guard = self.state.lock().await;
-    let client = guard
-      .client
-      .as_mut()
-      .ok_or_else(|| napi_err(Status::GenericFailure, "client is not connected"))?;
     let token = self.config.token.clone().unwrap_or_default();
 
-    let selection = client
-      .select_aggregate(token.as_str(), &aggregate_type, &aggregate_id, &fields)
+    let selection = self
+      .call_with_retry({
+        let token = token;
+        let aggregate_type = aggregate_type;
+        let aggregate_id = aggregate_id;
+        let fields = fields;
+        move |client| {
+          let token = token.clone();
+          let aggregate_type = aggregate_type.clone();
+          let aggregate_id = aggregate_id.clone();
+          let fields = fields.clone();
+          Box::pin(async move {
+            client
+              .select_aggregate(token.as_str(), &aggregate_type, &aggregate_id, &fields)
+              .await
+          })
+        }
+      })
       .await
       .map_err(control_err_to_napi)?;
 
@@ -371,11 +517,6 @@ impl DbxClient {
     aggregate_id: String,
     options: Option<PageOptions>,
   ) -> napi::Result<PageResult> {
-    let mut guard = self.state.lock().await;
-    let client = guard
-      .client
-      .as_mut()
-      .ok_or_else(|| napi_err(Status::GenericFailure, "client is not connected"))?;
     let cursor = options
       .as_ref()
       .and_then(|o| o.cursor.as_ref())
@@ -393,15 +534,33 @@ impl DbxClient {
       .or_else(|| self.config.token.clone())
       .unwrap_or_default();
 
-    let page = client
-      .list_events(
-        token.as_str(),
-        &aggregate_type,
-        &aggregate_id,
-        cursor.as_deref(),
-        take,
-        filter.as_deref(),
-      )
+    let page = self
+      .call_with_retry({
+        let token = token;
+        let aggregate_type = aggregate_type;
+        let aggregate_id = aggregate_id;
+        let cursor = cursor;
+        let filter = filter;
+        move |client| {
+          let token = token.clone();
+          let aggregate_type = aggregate_type.clone();
+          let aggregate_id = aggregate_id.clone();
+          let cursor = cursor.clone();
+          let filter = filter.clone();
+          Box::pin(async move {
+            client
+              .list_events(
+                token.as_str(),
+                &aggregate_type,
+                &aggregate_id,
+                cursor.as_deref(),
+                take,
+                filter.as_deref(),
+              )
+              .await
+          })
+        }
+      })
       .await
       .map_err(control_err_to_napi)?;
 
@@ -420,11 +579,6 @@ impl DbxClient {
     event_type: String,
     options: Option<AppendOptions>,
   ) -> napi::Result<serde_json::Value> {
-    let mut guard = self.state.lock().await;
-    let client = guard
-      .client
-      .as_mut()
-      .ok_or_else(|| napi_err(Status::GenericFailure, "client is not connected"))?;
     let opts = options.unwrap_or_default();
     let AppendOptions {
       payload,
@@ -447,7 +601,16 @@ impl DbxClient {
       note,
     };
 
-    match client.append_event(request).await {
+    match self
+      .call_with_retry({
+        let request = request.clone();
+        move |client| {
+          let req = request.clone();
+          Box::pin(async move { client.append_event(req).await })
+        }
+      })
+      .await
+    {
       Ok(record) => Ok(event_to_json(record)),
       Err(err) => {
         if self.should_treat_as_ok("appendEvent", &err) {
@@ -468,11 +631,6 @@ impl DbxClient {
     event_type: String,
     options: Option<CreateAggregateOptions>,
   ) -> napi::Result<serde_json::Value> {
-    let mut guard = self.state.lock().await;
-    let client = guard
-      .client
-      .as_mut()
-      .ok_or_else(|| napi_err(Status::GenericFailure, "client is not connected"))?;
     let opts = options.unwrap_or_default();
     let CreateAggregateOptions {
       token,
@@ -494,7 +652,16 @@ impl DbxClient {
       note,
     };
 
-    match client.create_aggregate(request).await {
+    match self
+      .call_with_retry({
+        let request = request.clone();
+        move |client| {
+          let req = request.clone();
+          Box::pin(async move { client.create_aggregate(req).await })
+        }
+      })
+      .await
+    {
       Ok(aggregate) => Ok(aggregate_to_json(aggregate)),
       Err(err) => {
         if self.should_treat_as_ok("createAggregate", &err) {
@@ -513,11 +680,6 @@ impl DbxClient {
     archived: bool,
     options: Option<SetArchiveOptions>,
   ) -> napi::Result<serde_json::Value> {
-    let mut guard = self.state.lock().await;
-    let client = guard
-      .client
-      .as_mut()
-      .ok_or_else(|| napi_err(Status::GenericFailure, "client is not connected"))?;
     let opts = options.unwrap_or_default();
     let SetArchiveOptions { token, comment } = opts;
     let token = token
@@ -532,7 +694,16 @@ impl DbxClient {
       comment,
     };
 
-    match client.set_aggregate_archive(request).await {
+    match self
+      .call_with_retry({
+        let request = request.clone();
+        move |client| {
+          let req = request.clone();
+          Box::pin(async move { client.set_aggregate_archive(req).await })
+        }
+      })
+      .await
+    {
       Ok(aggregate) => Ok(aggregate_to_json(aggregate)),
       Err(err) => {
         if self.should_treat_as_ok("setAggregateArchive", &err) {
@@ -580,11 +751,6 @@ impl DbxClient {
     #[napi(ts_arg_type = "JsonPatch[]")] operations: Vec<serde_json::Value>,
     options: Option<PatchOptions>,
   ) -> napi::Result<serde_json::Value> {
-    let mut guard = self.state.lock().await;
-    let client = guard
-      .client
-      .as_mut()
-      .ok_or_else(|| napi_err(Status::GenericFailure, "client is not connected"))?;
     let opts = options.unwrap_or(PatchOptions {
       metadata: None,
       note: None,
@@ -600,6 +766,8 @@ impl DbxClient {
       .unwrap_or_default();
 
     let patch = JsonValue::Array(operations);
+    let aggregate_type_for_fetch = aggregate_type.clone();
+    let aggregate_id_for_fetch = aggregate_id.clone();
     let request = PatchEventRequest {
       token: token.clone(),
       aggregate_type: aggregate_type.clone(),
@@ -610,9 +778,30 @@ impl DbxClient {
       note,
     };
 
-    match client.patch_event(request).await {
-      Ok(_) => match client
-        .get_aggregate(token.as_str(), &aggregate_type, &aggregate_id)
+    match self
+      .call_with_retry({
+        let request = request.clone();
+        move |client| {
+          let req = request.clone();
+          Box::pin(async move { client.patch_event(req).await })
+        }
+      })
+      .await
+    {
+      Ok(_) => match self
+        .call_with_retry({
+          let token = token.clone();
+          move |client| {
+            let token = token.clone();
+            let aggregate_type = aggregate_type_for_fetch.clone();
+            let aggregate_id = aggregate_id_for_fetch.clone();
+            Box::pin(async move {
+              client
+                .get_aggregate(token.as_str(), &aggregate_type, &aggregate_id)
+                .await
+            })
+          }
+        })
         .await
       {
         Ok(Some(aggregate)) => Ok(aggregate_to_json(aggregate)),
@@ -652,6 +841,106 @@ impl DbxClient {
       ControlClientError::Json(_) => true,
       _ => false,
     }
+  }
+
+  async fn call_with_retry<F, T>(&self, mut action: F) -> ControlResult<T>
+  where
+    F: FnMut(&mut ControlClient) -> BoxFuture<'_, ControlResult<T>> + Send,
+    T: Send,
+  {
+    let max_attempts = self.config.retry.attempts();
+    let mut require_connected = true;
+
+    for attempt in 1..=max_attempts {
+      if require_connected {
+        let guard = self.state.lock().await;
+        if guard.client.is_none() {
+          return Err(ControlClientError::Protocol(
+            CLIENT_NOT_CONNECTED_MESSAGE.into(),
+          ));
+        }
+        drop(guard);
+      } else {
+        match self.ensure_connection().await {
+          Ok(()) => {}
+          Err(err) => {
+            if attempt == max_attempts {
+              return Err(err);
+            }
+            let delay = self.config.retry.delay_for_attempt(attempt + 1);
+            if delay.as_millis() > 0 {
+              sleep(delay).await;
+            }
+            continue;
+          }
+        }
+      }
+
+      let mut guard = self.state.lock().await;
+      let client = match guard.client.as_mut() {
+        Some(client) => client,
+        None => {
+          if require_connected {
+            return Err(ControlClientError::Protocol(
+              CLIENT_NOT_CONNECTED_MESSAGE.into(),
+            ));
+          } else {
+            drop(guard);
+            continue;
+          }
+        }
+      };
+
+      match action(client).await {
+        Ok(result) => {
+          drop(guard);
+          return Ok(result);
+        }
+        Err(err) => {
+          if !self.is_retryable_error(&err) || attempt == max_attempts {
+            drop(guard);
+            return Err(err);
+          }
+          guard.client.take();
+          require_connected = false;
+          drop(guard);
+          let delay = self.config.retry.delay_for_attempt(attempt + 1);
+          if delay.as_millis() > 0 {
+            sleep(delay).await;
+          }
+        }
+      }
+    }
+
+    Err(ControlClientError::Protocol(
+      "retry attempts exhausted".into(),
+    ))
+  }
+
+  async fn ensure_connection(&self) -> ControlResult<()> {
+    let params = self
+      .config
+      .handshake_params()
+      .ok_or_else(|| ControlClientError::Protocol(MISSING_TOKEN_MESSAGE.into()))?;
+    let mut guard = self.state.lock().await;
+    if guard.client.is_some() {
+      return Ok(());
+    }
+    let client = ControlClient::connect_with_tenant(
+      &params.endpoint,
+      params.token.as_str(),
+      params.tenant_id.as_deref(),
+    )
+    .await?;
+    guard.client = Some(client);
+    Ok(())
+  }
+
+  fn is_retryable_error(&self, err: &ControlClientError) -> bool {
+    matches!(
+      err,
+      ControlClientError::Io(_) | ControlClientError::Capnp(_)
+    )
   }
 }
 
@@ -717,6 +1006,7 @@ mod tests {
   use chrono::Utc;
   use std::collections::BTreeMap;
   use std::sync::Mutex;
+  use std::time::Duration;
 
   static ENV_LOCK: Mutex<()> = Mutex::new(());
 
@@ -741,6 +1031,7 @@ mod tests {
         token: None,
         tenant_id: None,
         verbose: Some(true),
+        retry: None,
       };
       let config: ClientConfig = options.into();
       assert!(config.verbose, "expected verbose flag to propagate");
@@ -757,6 +1048,7 @@ mod tests {
         token: None,
         tenant_id: None,
         verbose: Some(false),
+        retry: None,
       };
       let config: ClientConfig = options.into();
       assert!(
@@ -764,6 +1056,33 @@ mod tests {
         "explicit false should override environment default"
       );
     });
+  }
+
+  #[test]
+  fn retry_options_override_defaults() {
+    let options = ClientOptions {
+      ip: None,
+      port: None,
+      token: None,
+      tenant_id: None,
+      verbose: None,
+      retry: Some(RetryOptions {
+        attempts: Some(3),
+        initial_delay_ms: Some(200),
+        max_delay_ms: Some(100),
+      }),
+    };
+    let config: ClientConfig = options.into();
+    assert_eq!(config.retry.attempts(), 3);
+    assert_eq!(
+      config.retry.delay_for_attempt(2),
+      Duration::from_millis(200),
+      "max delay should clamp to initial delay when smaller"
+    );
+    assert_eq!(
+      config.retry.delay_for_attempt(4),
+      Duration::from_millis(200),
+    );
   }
 
   fn sample_aggregate() -> AggregateStateView {
