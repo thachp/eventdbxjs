@@ -247,7 +247,10 @@ pub struct CreateAggregateOptions {
 #[napi(object)]
 pub struct SetArchiveOptions {
   pub token: Option<String>,
-  pub comment: Option<String>,
+  pub note: Option<String>,
+  #[serde(rename = "comment")]
+  #[napi(js_name = "comment")]
+  pub legacy_comment: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -681,17 +684,22 @@ impl DbxClient {
     options: Option<SetArchiveOptions>,
   ) -> napi::Result<serde_json::Value> {
     let opts = options.unwrap_or_default();
-    let SetArchiveOptions { token, comment } = opts;
+    let SetArchiveOptions {
+      token,
+      note,
+      legacy_comment,
+    } = opts;
     let token = token
       .or_else(|| self.config.token.clone())
       .unwrap_or_default();
+    let note = note.or(legacy_comment);
 
     let request = SetAggregateArchiveRequest {
       token,
       aggregate_type,
       aggregate_id,
       archived,
-      comment,
+      note,
     };
 
     match self

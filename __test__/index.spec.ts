@@ -278,20 +278,20 @@ const runMockedControlOperations = async (t: ExecutionContext) => {
   overrideMethod(
     client,
     'archive',
-    async (aggregateType: string, aggregateId: string, options: { token: string; comment: string }) => {
+    async (aggregateType: string, aggregateId: string, options: { token: string; note?: string; comment?: string }) => {
       t.is(aggregateType, 'person')
       t.is(aggregateId, 'p-001')
-      t.deepEqual(options, { token: 'custom-token', comment: 'archive note' })
+      t.deepEqual(options, { token: 'custom-token', note: 'archive note' })
       return archivedAggregate
     },
   )
   overrideMethod(
     client,
     'restore',
-    async (aggregateType: string, aggregateId: string, options: { token: string; comment: string }) => {
+    async (aggregateType: string, aggregateId: string, options: { token: string; note?: string; comment?: string }) => {
       t.is(aggregateType, 'person')
       t.is(aggregateId, 'p-001')
-      t.deepEqual(options, { token: 'custom-token', comment: 'restore note' })
+      t.deepEqual(options, { token: 'custom-token', note: 'restore note' })
       return restoredAggregate
     },
   )
@@ -354,14 +354,14 @@ const runMockedControlOperations = async (t: ExecutionContext) => {
   t.deepEqual(
     await client.archive('person', 'p-001', {
       token: 'custom-token',
-      comment: 'archive note',
+      note: 'archive note',
     }),
     archivedAggregate,
   )
   t.deepEqual(
     await client.restore('person', 'p-001', {
       token: 'custom-token',
-      comment: 'restore note',
+      note: 'restore note',
     }),
     restoredAggregate,
   )

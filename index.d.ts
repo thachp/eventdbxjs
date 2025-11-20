@@ -107,5 +107,7 @@ export interface PatchOptions {
 
 export interface SetArchiveOptions {
   token?: string
+  note?: string
+  /** @deprecated Use `note` instead. */
   comment?: string
 }

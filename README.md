@@ -99,7 +99,7 @@ async function main() {
 
     // archive a person, moving an aggregate from active index to archived
     await client.archive('person', 'p-110', {
-      comment: 'cleanup test data',
+      note: 'cleanup test data',
     })
 
     // return a list of events of a p-110
@@ -134,7 +134,7 @@ main().catch((err) => {
 | `client.patch(aggregateType, aggregateId, eventType, operations, options?)` | Apply an RFC 6902 JSON Patch and return the updated aggregate snapshot.                    |
 | `client.select(aggregateType, aggregateId, fields)`                         | Resolve with a JSON object containing only the requested fields when the aggregate exists. |
 
-`PageOptions` supports `{ take, cursor, includeArchived, archivedOnly, token }` for cursor-based pagination. Both `client.list` and `client.events` resolve to `{ items, nextCursor }` so you can feed the returned cursor into the next call. Set `archivedOnly` to `true` to request archived aggregates exclusively—`includeArchived` is inferred when you do. When appending events with `client.apply`, the aggregate must already exist; use `client.create` to emit the first event. `client.create` always requires an `eventType` and accepts optional `payload`, `metadata`, and `note` to seed the initial snapshot. Use `client.archive`/`client.restore` with `{ comment }` to record why an aggregate changed archive state.
+`PageOptions` supports `{ take, cursor, includeArchived, archivedOnly, token }` for cursor-based pagination. Both `client.list` and `client.events` resolve to `{ items, nextCursor }` so you can feed the returned cursor into the next call. Set `archivedOnly` to `true` to request archived aggregates exclusively—`includeArchived` is inferred when you do. When appending events with `client.apply`, the aggregate must already exist; use `client.create` to emit the first event. `client.create` always requires an `eventType` and accepts optional `payload`, `metadata`, and `note` to seed the initial snapshot. Use `client.archive`/`client.restore` with `{ note }` to record why an aggregate changed archive state.
 
 ## Runtime Configuration
 
@@ -234,7 +234,8 @@ interface CreateAggregateOptions {
 
 interface SetArchiveOptions {
   token?: string
-  comment?: string
+  note?: string
+  comment?: string // legacy alias
 }
 
 interface PatchOptions {

@@ -126,7 +126,8 @@ pub struct SetAggregateArchiveRequest {
   pub aggregate_id: String,
   pub archived: bool,
   #[serde(skip_serializing_if = "Option::is_none")]
-  pub comment: Option<String>,
+  #[serde(alias = "comment")]
+  pub note: Option<String>,
 }
 
 /// Sort specification applied when listing aggregates.
@@ -291,6 +292,11 @@ impl ControlClient {
       ),
       None => None,
     };
+    let sort_json = if sort.is_empty() {
+      None
+    } else {
+      Some(serde_json::to_string(sort)?)
+    };
 
     let request_id = self.next_request_id();
     let mut message = Builder::new_default();
@@ -323,16 +329,12 @@ impl ControlClient {
         body.set_has_filter(false);
         body.set_filter("".into());
       }
-      if !sort.is_empty() {
+      if let Some(sort) = sort_json.as_ref() {
         body.set_has_sort(true);
-        let mut list = body.reborrow().init_sort(sort.len() as u32);
-        for (idx, spec) in sort.iter().enumerate() {
-          let mut entry = list.reborrow().get(idx as u32);
-          entry.set_field(map_sort_field(&spec.field));
-          entry.set_descending(spec.descending);
-        }
+        body.set_sort(sort.as_str().into());
       } else {
         body.set_has_sort(false);
+        body.set_sort("".into());
       }
     }
 
@@ -643,12 +645,12 @@ impl ControlClient {
       body.set_aggregate_type(request.aggregate_type.as_str().into());
       body.set_aggregate_id(request.aggregate_id.as_str().into());
       body.set_archived(request.archived);
-      if let Some(comment) = request.comment.as_ref() {
-        body.set_has_comment(true);
-        body.set_comment(comment.as_str().into());
+      if let Some(note) = request.note.as_ref() {
+        body.set_has_note(true);
+        body.set_note(note.as_str().into());
       } else {
-        body.set_has_comment(false);
-        body.set_comment("".into());
+        body.set_has_note(false);
+        body.set_note("".into());
       }
     }
 
@@ -924,16 +926,6 @@ fn server_error(reader: control_capnp::control_error::Reader<'_>) -> ControlClie
   let message = read_text_field(reader.get_message(), "error message")
     .unwrap_or_else(|_| "unknown".to_string());
   ControlClientError::Server { code, message }
-}
-
-fn map_sort_field(field: &AggregateSortFieldSpec) -> control_capnp::AggregateSortField {
-  match field {
-    AggregateSortFieldSpec::AggregateType => control_capnp::AggregateSortField::AggregateType,
-    AggregateSortFieldSpec::AggregateId => control_capnp::AggregateSortField::AggregateId,
-    AggregateSortFieldSpec::Version => control_capnp::AggregateSortField::Version,
-    AggregateSortFieldSpec::MerkleRoot => control_capnp::AggregateSortField::MerkleRoot,
-    AggregateSortFieldSpec::Archived => control_capnp::AggregateSortField::Archived,
-  }
 }
 
 async fn send_control_handshake<R, W>(
