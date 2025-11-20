@@ -43,11 +43,6 @@ export declare class DbxClient {
   patch(aggregateType: string, aggregateId: string, eventType: string, operations: Array<JsonPatch>, options?: PatchOptions | undefined | null): Promise<any>
 }
 
-export interface AggregateSortInput {
-  field: string
-  descending?: boolean
-}
-
 export interface AppendOptions {
   payload?: any
   metadata?: any
@@ -91,7 +86,8 @@ export interface PageOptions {
   archivedOnly?: boolean
   token?: string
   filter?: string
-  sort?: Array<AggregateSortInput>
+  /** Sort directive string, e.g. "created_at:asc,aggregate_id:desc" */
+  sort?: string
 }
 
 export interface PageResult {

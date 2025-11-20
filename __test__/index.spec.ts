@@ -196,7 +196,7 @@ const runMockedControlOperations = async (t: ExecutionContext) => {
       options: {
         take: number
         cursor?: string
-        sort: Array<{ field: string; descending: boolean }>
+        sort?: string
         filter: { type: 'equals'; field: string; value: string }
       },
     ) => {
@@ -204,7 +204,7 @@ const runMockedControlOperations = async (t: ExecutionContext) => {
       t.deepEqual(options, {
         take: 10,
         cursor: 'cursor:after:p-001',
-        sort: [{ field: 'version', descending: true }],
+        sort: 'created_at:desc',
         filter: 'person.active == true',
       })
       return { items: [aggregate], nextCursor: 'cursor:after:p-010' }
@@ -321,7 +321,7 @@ const runMockedControlOperations = async (t: ExecutionContext) => {
     await client.list('person', {
       take: 10,
       cursor: 'cursor:after:p-001',
-      sort: [{ field: 'version', descending: true }],
+      sort: 'created_at:desc',
       filter: 'person.active == true',
     }),
     { items: [aggregate], nextCursor: 'cursor:after:p-010' },

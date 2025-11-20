@@ -136,6 +136,8 @@ main().catch((err) => {
 
 `PageOptions` supports `{ take, cursor, includeArchived, archivedOnly, token }` for cursor-based pagination. Both `client.list` and `client.events` resolve to `{ items, nextCursor }` so you can feed the returned cursor into the next call. Set `archivedOnly` to `true` to request archived aggregates exclusively—`includeArchived` is inferred when you do. When appending events with `client.apply`, the aggregate must already exist; use `client.create` to emit the first event. `client.create` always requires an `eventType` and accepts optional `payload`, `metadata`, and `note` to seed the initial snapshot. Use `client.archive`/`client.restore` with `{ note }` to record why an aggregate changed archive state.
 
+Aggregate sorting now matches the EventDBX CLI: pass fields like `created_at`, `updated_at`, `aggregate_type`, `aggregate_id`, or `archived`, optionally with `:asc`/`:desc` (e.g. `created_at:asc,aggregate_id:desc`). The `sort` option should be provided as a string in that format.
+
 ## Runtime Configuration
 
 The constructor falls back to environment variables when options are omitted:
@@ -210,7 +212,7 @@ interface PageOptions {
   archivedOnly?: boolean
   token?: string
   filter?: string
-  sort?: AggregateSort[]
+  sort?: string // e.g. "created_at:asc,aggregate_id:desc"
 }
 
 interface PageResult {
@@ -242,11 +244,6 @@ interface PatchOptions {
   metadata?: Json
   note?: string
   token?: string
-}
-
-interface AggregateSort {
-  field: 'aggregateType' | 'aggregateId' | 'version' | 'merkleRoot' | 'archived'
-  descending?: boolean
 }
 
 interface ClientEndpoint {
