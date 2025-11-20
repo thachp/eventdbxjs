@@ -934,7 +934,6 @@ fn server_error(reader: control_capnp::control_error::Reader<'_>) -> ControlClie
   ControlClientError::Server { code, message }
 }
 
-
 async fn send_control_handshake<R, W>(
   reader: &mut R,
   writer: &mut W,
