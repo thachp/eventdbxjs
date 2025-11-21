@@ -145,9 +145,9 @@ pub struct AggregateSortSpec {
 pub enum AggregateSortFieldSpec {
   AggregateType,
   AggregateId,
-  Version,
-  MerkleRoot,
   Archived,
+  CreatedAt,
+  UpdatedAt,
 }
 
 impl FromStr for AggregateSortFieldSpec {
@@ -155,12 +155,24 @@ impl FromStr for AggregateSortFieldSpec {
 
   fn from_str(value: &str) -> Result<Self, Self::Err> {
     match value {
-      "aggregateType" => Ok(Self::AggregateType),
-      "aggregateId" => Ok(Self::AggregateId),
-      "version" => Ok(Self::Version),
-      "merkleRoot" => Ok(Self::MerkleRoot),
+      "aggregateType" | "aggregate_type" => Ok(Self::AggregateType),
+      "aggregateId" | "aggregate_id" => Ok(Self::AggregateId),
       "archived" => Ok(Self::Archived),
+      "createdAt" | "created_at" => Ok(Self::CreatedAt),
+      "updatedAt" | "updated_at" => Ok(Self::UpdatedAt),
       _ => Err(()),
+    }
+  }
+}
+
+impl AggregateSortFieldSpec {
+  pub fn as_str(&self) -> &'static str {
+    match self {
+      AggregateSortFieldSpec::AggregateType => "aggregate_type",
+      AggregateSortFieldSpec::AggregateId => "aggregate_id",
+      AggregateSortFieldSpec::Archived => "archived",
+      AggregateSortFieldSpec::CreatedAt => "created_at",
+      AggregateSortFieldSpec::UpdatedAt => "updated_at",
     }
   }
 }
@@ -283,7 +295,7 @@ impl ControlClient {
     include_archived: bool,
     archived_only: bool,
     filter: Option<&str>,
-    sort: &[AggregateSortSpec],
+    sort: Option<&str>,
   ) -> ControlResult<Page<AggregateStateView>> {
     let take_u64 = match take {
       Some(value) => Some(
@@ -292,12 +304,6 @@ impl ControlClient {
       ),
       None => None,
     };
-    let sort_json = if sort.is_empty() {
-      None
-    } else {
-      Some(serde_json::to_string(sort)?)
-    };
-
     let request_id = self.next_request_id();
     let mut message = Builder::new_default();
     {
@@ -329,9 +335,9 @@ impl ControlClient {
         body.set_has_filter(false);
         body.set_filter("".into());
       }
-      if let Some(sort) = sort_json.as_ref() {
+      if let Some(sort) = sort {
         body.set_has_sort(true);
-        body.set_sort(sort.as_str().into());
+        body.set_sort(sort.into());
       } else {
         body.set_has_sort(false);
         body.set_sort("".into());

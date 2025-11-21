@@ -6,16 +6,14 @@
 //! event, or apply a JSON Patch against the current state.
 
 use futures::future::BoxFuture;
-use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 
 pub mod plugin_api;
 
 use crate::plugin_api::{
-  AggregateSortFieldSpec, AggregateSortSpec, AggregateStateView, AppendEventRequest, ControlClient,
-  ControlClientError, ControlResult, CreateAggregateRequest, PatchEventRequest,
-  SetAggregateArchiveRequest, StoredEventRecord,
+  AggregateStateView, AppendEventRequest, ControlClient, ControlClientError, ControlResult,
+  CreateAggregateRequest, PatchEventRequest, SetAggregateArchiveRequest, StoredEventRecord,
 };
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
@@ -206,7 +204,7 @@ pub struct PageOptions {
   pub archived_only: Option<bool>,
   pub token: Option<String>,
   pub filter: Option<String>,
-  pub sort: Option<Vec<AggregateSortInput>>,
+  pub sort: Option<String>,
 }
 
 #[napi(object)]
@@ -251,14 +249,6 @@ pub struct SetArchiveOptions {
   #[serde(rename = "comment")]
   #[napi(js_name = "comment")]
   pub legacy_comment: Option<String>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[napi(object)]
-pub struct AggregateSortInput {
-  pub field: String,
-  pub descending: Option<bool>,
 }
 
 #[napi]
@@ -376,27 +366,11 @@ impl DbxClient {
       .and_then(|o| o.filter.as_ref())
       .map(|value| value.trim().to_owned())
       .filter(|value| !value.is_empty());
-    let sort_specs = options
+    let sort = options
       .as_ref()
       .and_then(|o| o.sort.as_ref())
-      .map(|entries| {
-        let mut specs = Vec::with_capacity(entries.len());
-        for entry in entries {
-          let field = AggregateSortFieldSpec::from_str(entry.field.as_str()).map_err(|_| {
-            napi_err(
-              Status::InvalidArg,
-              format!("unknown aggregate sort field '{}'", entry.field),
-            )
-          })?;
-          specs.push(AggregateSortSpec {
-            field,
-            descending: entry.descending.unwrap_or(false),
-          });
-        }
-        Ok::<Vec<AggregateSortSpec>, napi::Error>(specs)
-      })
-      .transpose()?
-      .unwrap_or_default();
+      .map(|value| value.trim().to_owned())
+      .filter(|value| !value.is_empty());
     let token = options
       .as_ref()
       .and_then(|o| o.token.clone())
@@ -407,12 +381,12 @@ impl DbxClient {
         let cursor = cursor;
         let filter = filter;
         let token = token;
-        let sort_specs = sort_specs;
+        let sort = sort;
         move |client| {
           let token = token.clone();
           let cursor = cursor.clone();
           let filter = filter.clone();
-          let sort_specs = sort_specs.clone();
+          let sort = sort.clone();
           Box::pin(async move {
             client
               .list_aggregates(
@@ -422,7 +396,7 @@ impl DbxClient {
                 include_archived,
                 archived_only,
                 filter.as_deref(),
-                sort_specs.as_slice(),
+                sort.as_deref(),
               )
               .await
           })
